@@ -1,6 +1,8 @@
 package by.spectrometer.ui;
 
 import by.spectrometer.model.SpectrumData;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.scene.chart.*;
 
 public class SpectrumChart extends LineChart<Number, Number> {
@@ -8,6 +10,8 @@ public class SpectrumChart extends LineChart<Number, Number> {
     private final Series<Number, Number> spectrum = new Series<>();
     private final Series<Number, Number> dark = new Series<>();
     private final Series<Number, Number> reference = new Series<>();
+    private final ObservableList<Data<Number, Number>> spectrumPoints =
+            FXCollections.observableArrayList();
 
     private boolean showAbsorbance = false;
 
@@ -16,11 +20,18 @@ public class SpectrumChart extends LineChart<Number, Number> {
         ((NumberAxis)getXAxis()).setLabel("Длина волны, нм");
         getYAxis().setLabel("Интенсивность / Absorbance");
         setTitle("Спектр TCD1304");
-        setCreateSymbols(false);
+
+        for (int i = 0; i < 3648; i++) {
+            spectrumPoints.add(new XYChart.Data<>(0, 0));
+        }
+        spectrum.setData(spectrumPoints);
 
         spectrum.setName("Спектр");
         dark.setName("Тёмный ток");
         reference.setName("Опорный");
+        setCreateSymbols(false);   // уже есть — хорошо
+        setAlternativeRowFillVisible(false);
+        setAlternativeColumnFillVisible(false);
 
         getData().addAll(spectrum, dark, reference);
 
@@ -28,24 +39,23 @@ public class SpectrumChart extends LineChart<Number, Number> {
     }
 
     public void redraw(SpectrumData data) {
-        spectrum.getData().clear();
-        dark.getData().clear();
-        reference.getData().clear();
+        boolean showAbs = showAbsorbance && data.hasDark && data.hasRef;
 
-        for (int i = 0; i < 3648; i++) {
-            double x = data.wavelength[i];
+        int idx = 0;
+        for (XYChart.Data<Number, Number> p : spectrumPoints) {
+            double x = data.wavelength[idx];
+            double y;
 
-            if (data.hasDark) dark.getData().add(new Data<>(x, data.dark[i]));
-            if (data.hasRef)  reference.getData().add(new Data<>(x, data.reference[i]));
-
-            double value;
-            if (showAbsorbance && data.hasDark && data.hasRef) {
-                double denom = data.reference[i] - data.dark[i];
-                value = denom > 50 ? -Math.log10((data.raw[i] - data.dark[i]) / denom) : 0;
+            if (showAbs) {
+                double denom = data.reference[idx] - data.dark[idx];
+                y = denom > 50 ? -Math.log10((data.raw[idx] - data.dark[idx]) / denom) : 0;
             } else {
-                value = data.raw[i];
+                y = data.raw[idx];
             }
-            spectrum.getData().add(new Data<>(x, value));
+
+            p.setXValue(x);
+            p.setYValue(y);
+            idx++;
         }
     }
 

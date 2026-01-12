@@ -21,6 +21,7 @@ public class SerialConnectionService extends ConnectionService {
 
     // Буфер как в C#
     private final List<Byte> buffer = new ArrayList<>(8000);
+    private final byte[] ringBuffer = new byte[32768];
 
     // === Константы из C# ===
     private static final int DATA_POINTS = 3648;

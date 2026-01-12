@@ -125,6 +125,11 @@ public class SpectrometerController {
                 new Label("Логи:"),
                 logView
         );
+
+        chart.setAnimated(false);
+        chart.setCreateSymbols(false);
+
+
     }
 
     private void onConnectionTypeChanged() {
