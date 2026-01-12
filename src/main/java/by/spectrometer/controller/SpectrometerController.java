@@ -10,9 +10,13 @@ import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import com.fazecast.jSerialComm.SerialPort;
@@ -21,6 +25,9 @@ import java.util.prefs.Preferences;
 
 public class SpectrometerController {
 
+    // ────────────────────────────────────────────────────────────────
+    // Поля (модели и состояние)
+    // ────────────────────────────────────────────────────────────────
     private final VBox view = new VBox(15);
     private final SpectrumData data = new SpectrumData();
     private final ConnectionState connState = new ConnectionState();
@@ -28,7 +35,9 @@ public class SpectrometerController {
 
     private ConnectionType currentConnectionType = ConnectionType.WEBSOCKET;
 
-    // UI элементы
+    // ────────────────────────────────────────────────────────────────
+    // UI-компоненты (всегда final)
+    // ────────────────────────────────────────────────────────────────
     private final ComboBox<ConnectionType> cbConnectionType = new ComboBox<>();
     private final TextField tfAddress = new TextField();
     private final ComboBox<String> cbSerialPorts = new ComboBox<>();
@@ -39,84 +48,143 @@ public class SpectrometerController {
     private final SpectrumChart chart;
     private final ListView<String> logView = new ListView<>();
 
+    // Кнопки управления (создаём здесь, чтобы не плодить локальные переменные)
+    private Button btnDark;
+    private Button btnRef;
+    private Button btnLive;
+    private Button btnCapture;
+
+    // ────────────────────────────────────────────────────────────────
+    // Конструктор
+    // ────────────────────────────────────────────────────────────────
     public SpectrometerController() {
         chart = new SpectrumChart(data);
-        setupUI();
+        initializeUIComponents();
+        setupBindings();
+        setupEventHandlers();
+        buildLayout();
         loadLastConnection();
         refreshSerialPorts();
     }
 
-    private void setupUI() {
-        // Настройка выбора типа подключения
+    // ────────────────────────────────────────────────────────────────
+    // Инициализация свойств компонентов
+    // ────────────────────────────────────────────────────────────────
+    private void initializeUIComponents() {
+        // Connection type
         cbConnectionType.setItems(FXCollections.observableArrayList(ConnectionType.values()));
         cbConnectionType.setValue(ConnectionType.WEBSOCKET);
-        cbConnectionType.setOnAction(e -> onConnectionTypeChanged());
 
-        // Настройка полей ввода
+        // Address field
         tfAddress.setPrefWidth(200);
-        tfAddress.setPromptText("IP:порт или COM порт");
+        tfAddress.setPromptText("ws://IP:порт (например: 192.168.1.77:81)");
 
-        // Настройка выбора COM портов
+        // Serial ports
         cbSerialPorts.setPrefWidth(150);
         cbSerialPorts.setVisible(false);
+
+        // Log view
+        logView.setItems(LogService.getLogs());
+        logView.setPrefHeight(180);
+        logView.setStyle("""
+            -fx-font-family: Consolas;
+            -fx-font-size: 12;
+        """);
+
+        // Chart
+        chart.setAnimated(false);
+        chart.setCreateSymbols(false);
+
+        // ── Кнопки управления ── (переносим сюда)
+        btnDark    = new Button("Тёмный ток");
+        btnRef     = new Button("Белая опора");
+        btnLive    = new Button("Live ON");
+        btnCapture = new Button("Захватить");
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Привязки свойств (bindings)
+    // ────────────────────────────────────────────────────────────────
+    private void setupBindings() {
+        lblStatus.textProperty().bind(connState.statusProperty());
+
+        btnConnect.textProperty().bind(
+                connState.connectedProperty()
+                        .map(connected -> connected ? "Отключиться" : "Подключиться")
+        );
+
+        // Автоскролл логов
+        LogService.getLogs().addListener((ListChangeListener<String>) change ->
+                logView.scrollTo(LogService.getLogs().size() - 1));
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // События и обработчики
+    // ────────────────────────────────────────────────────────────────
+    private void setupEventHandlers() {
+        cbConnectionType.setOnAction(e -> onConnectionTypeChanged());
+
         btnRefreshPorts.setOnAction(e -> refreshSerialPorts());
 
-        // Кнопка подключения
         btnConnect.setOnAction(e -> toggleConnection());
 
-        // Checkbox для absorbance
         cbAbs.setOnAction(e -> {
             chart.setShowAbsorbance(cbAbs.isSelected());
             chart.redraw(data);
         });
 
-        // Биндинг свойств
-        lblStatus.textProperty().bind(connState.statusProperty());
-        btnConnect.textProperty().bind(
-                connState.connectedProperty().map(c -> c ? "Отключиться" : "Подключиться")
-        );
+        // Кнопки управления
+        btnDark.setOnAction(e -> sendCommand("DARK"));
+        btnRef.setOnAction(e -> sendCommand("REF"));
+        btnCapture.setOnAction(e -> sendCommand("CAPTURE"));
 
+        btnLive.setOnAction(e -> {
+            boolean turnOn = btnLive.getText().contains("ON");
+            btnLive.setText(turnOn ? "Live OFF" : "Live ON");
+            sendCommand(turnOn ? "LIVE ON" : "LIVE OFF");
+        });
+
+        logView.setOnKeyPressed(event -> {
+            if (event.isControlDown() && event.getCode() == KeyCode.C) {
+                ObservableList<String> selected = logView.getSelectionModel().getSelectedItems();
+                if (!selected.isEmpty()) {
+                    String text = String.join("\n", selected);
+                    Clipboard clipboard = Clipboard.getSystemClipboard();
+                    ClipboardContent content = new ClipboardContent();
+                    content.putString(text);
+                    clipboard.setContent(content);
+                    event.consume(); // чтобы не передавалось дальше
+                }
+            }
+        });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Сборка layout-ов
+    // ────────────────────────────────────────────────────────────────
+    private void buildLayout() {
         // Панель подключения
         HBox connectionPanel = new HBox(10);
         connectionPanel.setAlignment(Pos.CENTER_LEFT);
         connectionPanel.getChildren().addAll(
                 new Label("Тип:"), cbConnectionType,
                 new Label("Адрес:"), tfAddress,
-                cbSerialPorts, btnRefreshPorts, btnConnect, lblStatus
+                cbSerialPorts, btnRefreshPorts,
+                btnConnect, lblStatus
         );
 
         // Панель управления
-        Button btnDark = new Button("Тёмный ток");
-        Button btnRef = new Button("Белая опора");
-        Button btnLive = new Button("Live ON");
-        Button btnCapture = new Button("Захватить");
+        HBox controls = new HBox(20,
+                btnDark = new Button("Тёмный ток"),
+                btnRef  = new Button("Белая опора"),
+                btnLive = new Button("Live ON"),
+                btnCapture = new Button("Захватить"),
+                cbAbs
+        );
 
-        btnDark.setOnAction(e -> sendCommand("DARK"));
-        btnRef.setOnAction(e -> sendCommand("REF"));
-        btnCapture.setOnAction(e -> sendCommand("CAPTURE"));
-        btnLive.setOnAction(e -> {
-            boolean on = btnLive.getText().contains("ON");
-            btnLive.setText(on ? "Live OFF" : "Live ON");
-            sendCommand(on ? "LIVE ON" : "LIVE OFF");
-        });
-        btnCapture.setOnAction(e -> sendCommand("{\"cmd\":\"capture\"}"));
-
-        HBox controls = new HBox(20, btnDark, btnRef, btnLive, btnCapture, cbAbs);
-
-        // Основной layout
+        // Основной контейнер
         view.setPadding(new Insets(20));
         view.setStyle("-fx-background-color: #f4f4f4;");
-
-        logView.setItems(LogService.getLogs());
-        logView.setPrefHeight(180);
-        logView.setStyle("""
-                    -fx-font-family: Consolas;
-                    -fx-font-size: 12;
-                """);
-        LogService.getLogs().addListener(
-                (ListChangeListener<String>) c ->
-                        logView.scrollTo(LogService.getLogs().size() - 1)
-        );
 
         view.getChildren().addAll(
                 connectionPanel,
@@ -125,13 +193,11 @@ public class SpectrometerController {
                 new Label("Логи:"),
                 logView
         );
-
-        chart.setAnimated(false);
-        chart.setCreateSymbols(false);
-
-
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Логика подключения / отключения / команд (остаётся почти без изменений)
+    // ────────────────────────────────────────────────────────────────
     private void onConnectionTypeChanged() {
         currentConnectionType = cbConnectionType.getValue();
         boolean isSerial = currentConnectionType == ConnectionType.SERIAL;
@@ -139,11 +205,9 @@ public class SpectrometerController {
         cbSerialPorts.setVisible(isSerial);
         tfAddress.setVisible(!isSerial);
 
-        if (isSerial) {
-            tfAddress.setPromptText("Выберите COM порт");
-        } else {
-            tfAddress.setPromptText("ws://IP:порт (например: 192.168.1.77:81)");
-        }
+        tfAddress.setPromptText(isSerial
+                ? "Выберите COM порт"
+                : "ws://IP:порт (например: 192.168.1.77:81)");
     }
 
     private void refreshSerialPorts() {
@@ -166,30 +230,30 @@ public class SpectrometerController {
     }
 
     private void connect() {
-        String address;
-
-        if (currentConnectionType == ConnectionType.SERIAL) {
-            address = cbSerialPorts.getValue();
-            if (address != null) {
-                // Извлекаем только имя порта (до первого пробела)
-                address = address.split(" ")[0];
-            } else {
-                lblStatus.setText("Выберите COM порт");
-                return;
+        String address = switch (currentConnectionType) {
+            case SERIAL -> {
+                String selected = cbSerialPorts.getValue();
+                if (selected == null) {
+                    lblStatus.setText("Выберите COM порт");
+                    yield null;
+                }
+                yield selected.split(" ")[0];
             }
-            connectionService = new SerialConnectionService(data, connState, this::updateChart);
-        } else {
-            address = tfAddress.getText().trim();
-            if (!address.contains("://")) {
-                address = "ws://" + address;
+            case WEBSOCKET -> {
+                String text = tfAddress.getText().trim();
+                yield text.contains("://") ? text : "ws://" + text;
             }
-            connectionService = new WebSocketConnectionService(data, connState, this::updateChart);
-        }
+        };
 
-        if (address != null && !address.isEmpty()) {
-            connectionService.connect(address);
-            saveLastConnection();
-        }
+        if (address == null || address.isEmpty()) return;
+
+        connectionService = switch (currentConnectionType) {
+            case SERIAL    -> new SerialConnectionService(data, connState, this::updateChart);
+            case WEBSOCKET -> new WebSocketConnectionService(data, connState, this::updateChart);
+        };
+
+        connectionService.connect(address);
+        saveLastConnection();
     }
 
     private void disconnect() {
@@ -211,13 +275,13 @@ public class SpectrometerController {
 
     private void loadLastConnection() {
         Preferences p = Preferences.userNodeForPackage(getClass());
-        ConnectionType savedType = ConnectionType.valueOf(p.get("connectionType", "WEBSOCKET"));
-        cbConnectionType.setValue(savedType);
+        String saved = p.get("connectionType", "WEBSOCKET");
+        ConnectionType type = ConnectionType.valueOf(saved);
+        cbConnectionType.setValue(type);
 
-        if (savedType == ConnectionType.WEBSOCKET) {
+        if (type == ConnectionType.WEBSOCKET) {
             tfAddress.setText(p.get("wsAddress", "192.168.1.77:81"));
         }
-        // Для Serial портов обычно не сохраняем, так как они могут меняться
     }
 
     private void saveLastConnection() {
