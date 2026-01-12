@@ -4,10 +4,12 @@ import by.spectrometer.model.ConnectionState;
 import by.spectrometer.model.ConnectionType;
 import by.spectrometer.model.SpectrumData;
 import by.spectrometer.service.ConnectionService;
+import by.spectrometer.service.LogService;
 import by.spectrometer.service.SerialConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
 import javafx.collections.FXCollections;
+import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -35,6 +37,7 @@ public class SpectrometerController {
     private final Label lblStatus = new Label();
     private final CheckBox cbAbs = new CheckBox("Показывать Absorbance");
     private final SpectrumChart chart;
+    private final ListView<String> logView = new ListView<>();
 
     public SpectrometerController() {
         chart = new SpectrumChart(data);
@@ -88,12 +91,13 @@ public class SpectrometerController {
         Button btnLive = new Button("Live ON");
         Button btnCapture = new Button("Захватить");
 
-        btnDark.setOnAction(e -> sendCommand("{\"cmd\":\"dark\"}"));
-        btnRef.setOnAction(e -> sendCommand("{\"cmd\":\"ref\"}"));
+        btnDark.setOnAction(e -> sendCommand("DARK"));
+        btnRef.setOnAction(e -> sendCommand("REF"));
+        btnCapture.setOnAction(e -> sendCommand("CAPTURE"));
         btnLive.setOnAction(e -> {
             boolean on = btnLive.getText().contains("ON");
             btnLive.setText(on ? "Live OFF" : "Live ON");
-            sendCommand(on ? "{\"cmd\":\"live\",\"on\":true}" : "{\"cmd\":\"live\",\"on\":false}");
+            sendCommand(on ? "LIVE ON" : "LIVE OFF");
         });
         btnCapture.setOnAction(e -> sendCommand("{\"cmd\":\"capture\"}"));
 
@@ -101,8 +105,26 @@ public class SpectrometerController {
 
         // Основной layout
         view.setPadding(new Insets(20));
-        view.getChildren().addAll(connectionPanel, controls, chart);
         view.setStyle("-fx-background-color: #f4f4f4;");
+
+        logView.setItems(LogService.getLogs());
+        logView.setPrefHeight(180);
+        logView.setStyle("""
+                    -fx-font-family: Consolas;
+                    -fx-font-size: 12;
+                """);
+        LogService.getLogs().addListener(
+                (ListChangeListener<String>) c ->
+                        logView.scrollTo(LogService.getLogs().size() - 1)
+        );
+
+        view.getChildren().addAll(
+                connectionPanel,
+                controls,
+                chart,
+                new Label("Логи:"),
+                logView
+        );
     }
 
     private void onConnectionTypeChanged() {
@@ -172,6 +194,7 @@ public class SpectrometerController {
     }
 
     private void sendCommand(String command) {
+        LogService.log("CMD ▶ " + command);
         if (connectionService != null && connectionService.isConnected()) {
             connectionService.sendCommand(command);
         }

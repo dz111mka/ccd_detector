@@ -29,11 +29,13 @@ public class Esp32WebSocketService {
             if (client != null && client.isOpen()) client.close();
 
             client = new WebSocketClient(new URI(url)) {
-                @Override public void onOpen(ServerHandshake handshake) {
+                @Override
+                public void onOpen(ServerHandshake handshake) {
                     Platform.runLater(() -> state.setConnected(url));
                 }
 
-                @Override public void onMessage(String message) {
+                @Override
+                public void onMessage(String message) {
                     try {
                         JsonNode json = JsonUtils.MAPPER.readTree(message);
 

@@ -32,7 +32,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
         dark.getData().clear();
         reference.getData().clear();
 
-        for (int i = 0; i < 256; i++) {
+        for (int i = 0; i < 3648; i++) {
             double x = data.wavelength[i];
 
             if (data.hasDark) dark.getData().add(new Data<>(x, data.dark[i]));
