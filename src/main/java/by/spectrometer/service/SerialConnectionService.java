@@ -6,219 +6,178 @@ import com.fazecast.jSerialComm.SerialPort;
 import javafx.application.Platform;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class SerialConnectionService extends ConnectionService {
 
-    private static final int DATA_POINTS      = 3648;
-    private static final int FRAME_SIZE_12BIT = 7296;   // 3648 * 2 bytes
-    private static final int RING_BUFFER_SIZE = 65536;  // 64 KB — enough for ~8+ frames
+    private static final int DATA_POINTS       = 3648;
+    private static final int BUFFER_SIZE_12BIT = 7296;   // 3648 * 2
+    private static final int BUFFER_SIZE_8BIT  = 3648;
+
+    private static final long FRAME_DELAY_MS   = 150;    // ← ключевая задержка, можно менять
 
     private SerialPort port;
     private InputStream in;
     private OutputStream out;
 
-    private Thread readerThread;
-    private Thread processorThread;
+    private Thread readThread;
+    private Thread processThread;
     private volatile boolean running = false;
+
+    private final List<Byte> dataBuffer = new ArrayList<>(BUFFER_SIZE_12BIT + 8192);
 
     private int adcMode = 0; // 0 = 12-bit, 1 = 8-bit
 
-    // Ring buffer
-    private final byte[] ringBuffer = new byte[RING_BUFFER_SIZE];
-    private volatile int writePosition = 0;
-    private volatile int readPosition  = 0;
-    private volatile int bytesAvailable = 0;
-
-    private final Object dataAvailableLock = new Object();
-
-
-    public SerialConnectionService(
-            SpectrumData data,
-            ConnectionState state,
-            Runnable onNewSpectrum) {
+    public SerialConnectionService(SpectrumData data, ConnectionState state, Runnable onNewSpectrum) {
         super(data, state, onNewSpectrum);
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Connection
-    // ────────────────────────────────────────────────────────────────
     @Override
     public void connect(String portName) {
         disconnect();
 
         try {
             port = SerialPort.getCommPort(portName);
-            configurePort(port);
+
+            port.setBaudRate(921600);
+            port.setNumDataBits(8);
+            port.setNumStopBits(1);
+            port.setParity(SerialPort.NO_PARITY);
+
+            port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 100, 0);
+
+            port.setDTR();
+            port.setRTS();
 
             if (!port.openPort()) {
-                state.setDisconnected("Failed to open port");
+                state.setDisconnected("Не удалось открыть порт");
                 return;
             }
 
-            in  = port.getInputStreamWithSuppressedTimeoutExceptions();
+            in = port.getInputStreamWithSuppressedTimeoutExceptions();
             out = port.getOutputStream();
 
             running = true;
-            startReaderThread();
-            startProcessorThread();
+            startReadThread();
+            startProcessThread();
 
-            Platform.runLater(() ->
-                    state.setConnected("USB CCD: " + portName));
+            Platform.runLater(() -> state.setConnected("USB CCD: " + portName));
 
-            // Start acquisition in 12-bit mode by default
             sendCommand("START_12BIT");
 
         } catch (Exception e) {
-            LogService.error("Connection error to port " + portName, e);
+            LogService.error("Ошибка подключения к " + portName, e);
             Platform.runLater(() -> state.setDisconnected(e.getMessage()));
         }
     }
 
-    private void configurePort(SerialPort p) {
-        p.setBaudRate(921600);
-        p.setNumDataBits(8);
-        p.setNumStopBits(1);
-        p.setParity(SerialPort.NO_PARITY);
-        p.setComPortTimeouts(
-                SerialPort.TIMEOUT_READ_SEMI_BLOCKING,
-                100,  // read timeout
-                0     // write timeout
-        );
-        p.setDTR();
-        p.setRTS();
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // Reader thread
-    // ────────────────────────────────────────────────────────────────
-    private void startReaderThread() {
-        readerThread = new Thread(this::readerLoop, "serial-reader");
-        readerThread.setDaemon(true);
-        readerThread.start();
-    }
-
-    private void readerLoop() {
-        byte[] chunk = new byte[4096];
-
-        try {
+    private void startReadThread() {
+        readThread = new Thread(() -> {
+            byte[] chunk = new byte[4096];
             while (running) {
-                int bytesRead = in.read(chunk);
-                if (bytesRead < 0) {
-                    LogService.log("Stream ended (read = -1)");
-                    running = false;
-                    break;
-                }
+                try {
+                    int bytesRead = in.read(chunk);
+                    if (bytesRead <= 0) continue;
 
-                if (bytesRead == 0) {
-                    continue;
-                }
-
-                putBytesToRingBuffer(chunk, 0, bytesRead);
-
-                // Log only larger chunks or when buffer is filling up
-                if (bytesRead >= 1024 || bytesAvailable > 20000) {
-                    LogService.log("Read " + bytesRead + " bytes, buffer: " + bytesAvailable);
-                }
-            }
-        } catch (IOException e) {
-            if (running) {
-                LogService.error("Read error from port", e);
-            }
-        } finally {
-            running = false;
-        }
-    }
-
-    private void putBytesToRingBuffer(byte[] src, int offset, int length) {
-        synchronized (dataAvailableLock) {
-            for (int i = 0; i < length; i++) {
-                if (bytesAvailable >= RING_BUFFER_SIZE) {
-                    readPosition = (readPosition + 1) % RING_BUFFER_SIZE;
-                } else {
-                    bytesAvailable++;
-                }
-
-                ringBuffer[writePosition] = src[offset + i];
-                writePosition = (writePosition + 1) % RING_BUFFER_SIZE;
-            }
-
-            dataAvailableLock.notifyAll();
-        }
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // Processor thread
-    // ────────────────────────────────────────────────────────────────
-    private void startProcessorThread() {
-        processorThread = new Thread(this::processorLoop, "serial-processor");
-        processorThread.setDaemon(true);
-        processorThread.start();
-    }
-
-    private void processorLoop() {
-        try {
-            while (running) {
-                synchronized (dataAvailableLock) {
-                    while (bytesAvailable < FRAME_SIZE_12BIT && running) {
-                        dataAvailableLock.wait(500);
+                    synchronized (dataBuffer) {
+                        for (int i = 0; i < bytesRead; i++) {
+                            dataBuffer.add(chunk[i]);
+                        }
                     }
-                    if (!running) break;
+                } catch (IOException e) {
+                    if (running) LogService.error("Ошибка чтения из порта", e);
                 }
-
-                processAvailableData();
-
-                Thread.sleep(10);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            LogService.error("Processor thread error", e);
-        }
+        }, "serial-read-thread");
+
+        readThread.setDaemon(true);
+        readThread.start();
     }
 
-    private void processAvailableData() {
-        synchronized (dataAvailableLock) {
-            int available = bytesAvailable;
+    private void startProcessThread() {
+        processThread = new Thread(() -> {
+            while (running) {
+                processBufferData();
+                try {
+                    Thread.sleep(8);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "serial-process-thread");
 
-            if (adcMode == 0 && available >= FRAME_SIZE_12BIT) {
-                LogService.log("Processing 12-bit frame, bytes: " + available);
+        processThread.setDaemon(true);
+        processThread.start();
+    }
 
+    private void processBufferData() {
+        synchronized (dataBuffer) {
+            int count = dataBuffer.size();
+
+            if (count >= BUFFER_SIZE_12BIT) {
+                LogService.log(String.format(
+                        "Frame %d byte | start: %02X %02X %02X %02X | end: %02X %02X %02X %02X",
+                        count,
+                        dataBuffer.get(0) & 0xFF, dataBuffer.get(1) & 0xFF,
+                        dataBuffer.get(2) & 0xFF, dataBuffer.get(3) & 0xFF,
+                        dataBuffer.get(count - 4) & 0xFF, dataBuffer.get(count - 3) & 0xFF,
+                        dataBuffer.get(count - 2) & 0xFF, dataBuffer.get(count - 1) & 0xFF
+                ));
+            }
+
+            if (adcMode == 0 && count >= BUFFER_SIZE_12BIT) {
+
+                // Мягкая ресинхронизация (если high-байт > 0x0F — пропускаем по байту)
+                while (count >= 2 && (dataBuffer.get(1) & 0xFF) > 0x0F) {
+                    dataBuffer.remove(0);
+                    count = dataBuffer.size();
+                    LogService.log("Пропущен байт (high > 0x0F), новый размер: " + count);
+                }
+
+                if (count < BUFFER_SIZE_12BIT) return;
+
+                // Чтение low first
                 for (int i = 0; i < DATA_POINTS; i++) {
-                    int lo = getByteFromRing() & 0xFF;
-                    int hi = getByteFromRing() & 0xFF;
+                    int lo = dataBuffer.get(2 * i)     & 0xFF;
+                    int hi = dataBuffer.get(2 * i + 1) & 0xFF;
                     data.raw[i] = (hi << 8) | lo;
                 }
 
-                bytesAvailable -= FRAME_SIZE_12BIT;
-
                 generateWavelengths();
+                dataBuffer.subList(0, BUFFER_SIZE_12BIT).clear();
+
                 Platform.runLater(onNewSpectrum);
 
                 sendCommand("START_12BIT");
-                LogService.log("Next frame requested");
+
+                // Задержка — ключ к стабильности
+                try {
+                    Thread.sleep(FRAME_DELAY_MS);
+                } catch (InterruptedException ignored) {}
             }
-            else if (available > RING_BUFFER_SIZE * 0.9) {
-                LogService.log("Ring buffer almost full: " + available + " bytes");
-                readPosition = writePosition;
-                bytesAvailable = 0;
+            else if (adcMode == 1 && count >= BUFFER_SIZE_8BIT) {
+
+                for (int i = 0; i < DATA_POINTS; i++) {
+                    data.raw[i] = (dataBuffer.get(i) & 0xFF) << 4;
+                }
+
+                generateWavelengths();
+                dataBuffer.subList(0, BUFFER_SIZE_8BIT).clear();
+
+                Platform.runLater(onNewSpectrum);
+            }
+
+            if (count > 20000) {
+                LogService.log("Buffer over (" + count + " byte) → reset");
+                dataBuffer.clear();
             }
         }
     }
 
-    private byte getByteFromRing() {
-        byte b = ringBuffer[readPosition];
-        readPosition = (readPosition + 1) % RING_BUFFER_SIZE;
-        bytesAvailable--;
-        return b;
-    }
-
-
-    // ────────────────────────────────────────────────────────────────
-    // Commands
-    // ────────────────────────────────────────────────────────────────
     @Override
-    public void sendCommand(String command) {
-        byte cmd = switch (command.toUpperCase()) {
+    public void sendCommand(String commandStr) {
+        byte cmd = switch (commandStr.toUpperCase()) {
             case "START_12BIT" -> { adcMode = 0; yield (byte) 0xA1; }
             case "START_8BIT"  -> { adcMode = 1; yield (byte) 0xA2; }
             case "STATS"       -> (byte) 0xA3;
@@ -241,36 +200,30 @@ public class SerialConnectionService extends ConnectionService {
             out.write(cmd);
             out.flush();
 
-            synchronized (dataAvailableLock) {
-                readPosition = writePosition;
-                bytesAvailable = 0;
+            synchronized (dataBuffer) {
+                dataBuffer.clear();
             }
 
-            LogService.log("Command sent: " + command);
+            LogService.log("Command is send: " + commandStr);
 
         } catch (IOException e) {
-            LogService.error("Failed to send command: " + command, e);
+            LogService.error("Error of send command " + commandStr, e);
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Disconnect
-    // ────────────────────────────────────────────────────────────────
     @Override
     public void disconnect() {
         running = false;
 
         try {
-            if (readerThread != null)    readerThread.interrupt();
-            if (processorThread != null) processorThread.interrupt();
+            if (readThread != null) readThread.interrupt();
+            if (processThread != null) processThread.interrupt();
             if (port != null && port.isOpen()) {
                 port.closePort();
             }
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
 
-        Platform.runLater(() ->
-                state.setDisconnected("Disconnected"));
+        Platform.runLater(() -> state.setDisconnected("Disconnected"));
     }
 
     @Override
@@ -278,9 +231,6 @@ public class SerialConnectionService extends ConnectionService {
         return port != null && port.isOpen();
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Helpers
-    // ────────────────────────────────────────────────────────────────
     private void generateWavelengths() {
         double startNm = 189.5;
         double nmPerPixel = 0.48;

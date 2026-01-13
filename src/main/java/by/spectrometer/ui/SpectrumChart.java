@@ -74,28 +74,28 @@ public class SpectrumChart extends LineChart<Number, Number> {
     public void redraw(SpectrumData data) {
         boolean useAbs = showAbsorbance && data.hasDark && data.hasRef;
 
-        ObservableList<XYChart.Data<Number, Number>> newData = FXCollections.observableArrayList();
-
-        for (int i = 0; i < PIXEL_COUNT; i++) {
-            double y = computeYValue(data, i, useAbs);
-            newData.add(new XYChart.Data<>(i, y));
-        }
-
         Platform.runLater(() -> {
-            // Важно: очищаем старую серию и ставим новую
-            spectrumSeries.getData().clear();           // или можно не очищать, а заменить целиком
-            spectrumSeries.setData(newData);            // ← это ключевое
+            // Полностью очищаем и пересоздаём точки — как в C#
+            spectrumSeries.getData().clear();
+
+            ObservableList<XYChart.Data<Number, Number>> newPoints = FXCollections.observableArrayList();
+
+            for (int i = 0; i < PIXEL_COUNT; i++) {
+                double y = computeYValue(data, i, useAbs);
+                newPoints.add(new XYChart.Data<>(i, y));
+            }
+
+            spectrumSeries.setData(newPoints);
+
+            // Подгонка Y-оси
+            double maxY = newPoints.stream()
+                    .mapToDouble(p -> p.getYValue().doubleValue())
+                    .max().orElse(4096.0);
+
+            NumberAxis yAxis = (NumberAxis) getYAxis();
+            yAxis.setUpperBound(Math.max(4096, maxY * 1.1));
+            yAxis.setLowerBound(0);
         });
-
-        // Y-ось подгоняем
-        double maxY = newData.stream()
-                .mapToDouble(d -> d.getYValue().doubleValue())
-                .filter(v -> !Double.isNaN(v))
-                .max().orElse(4096.0);
-
-        NumberAxis yAxis = (NumberAxis) getYAxis();
-        yAxis.setUpperBound(Math.max(4096, maxY * 1.1));
-        yAxis.setLowerBound(0);
     }
 
     private double computeYValue(SpectrumData data, int idx, boolean useAbsorbance) {

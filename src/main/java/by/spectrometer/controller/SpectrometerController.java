@@ -50,6 +50,8 @@ public class SpectrometerController {
     private final CheckBox cbAbs = new CheckBox("Показывать Absorbance");
     private final SpectrumChart chart;
     private final ListView<String> logView = new ListView<>();
+    private long lastRedraw = 0;
+    private static final long REDRAW_INTERVAL_MS = 100; // 10 fps
 
     // Кнопки управления (создаём здесь, чтобы не плодить локальные переменные)
     private Button btnDark;
@@ -274,10 +276,10 @@ public class SpectrometerController {
 
     private void updateChart() {
         long now = System.currentTimeMillis();
-        if (now - lastChartUpdateTime < MIN_UPDATE_INTERVAL_MS) {
+        if (now - lastRedraw < REDRAW_INTERVAL_MS) {
             return;
         }
-        lastChartUpdateTime = now;
+        lastRedraw = now;
 
         chart.redraw(data);
     }
