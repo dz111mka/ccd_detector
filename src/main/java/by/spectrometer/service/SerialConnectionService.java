@@ -130,7 +130,7 @@ public class SerialConnectionService extends ConnectionService {
 
                 // Мягкая ресинхронизация (если high-байт > 0x0F — пропускаем по байту)
                 while (count >= 2 && (dataBuffer.get(1) & 0xFF) > 0x0F) {
-                    dataBuffer.remove(0);
+                    dataBuffer.removeFirst();
                     count = dataBuffer.size();
                     LogService.log("Пропущен байт (high > 0x0F), новый размер: " + count);
                 }

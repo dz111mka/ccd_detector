@@ -35,9 +35,6 @@ public class SpectrometerController {
 
     private ConnectionType currentConnectionType = ConnectionType.WEBSOCKET;
 
-    private long lastChartUpdateTime = 0;
-    private static final long MIN_UPDATE_INTERVAL_MS = 80;
-
     // ────────────────────────────────────────────────────────────────
     // UI-компоненты (всегда final)
     // ────────────────────────────────────────────────────────────────
@@ -222,7 +219,7 @@ public class SpectrometerController {
             cbSerialPorts.getItems().add(port.getSystemPortName() + " - " + port.getDescriptivePortName());
         }
         if (!cbSerialPorts.getItems().isEmpty()) {
-            cbSerialPorts.setValue(cbSerialPorts.getItems().get(0));
+            cbSerialPorts.setValue(cbSerialPorts.getItems().getFirst());
         }
     }
 

@@ -109,13 +109,6 @@ public class SpectrumChart extends LineChart<Number, Number> {
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Absorbance режим
-    // ────────────────────────────────────────────────────────────────
-    public boolean isShowAbsorbance() {
-        return showAbsorbance;
-    }
-
     public void setShowAbsorbance(boolean show) {
         this.showAbsorbance = show;
         // redraw можно вызвать из контроллера после смены чекбокса
