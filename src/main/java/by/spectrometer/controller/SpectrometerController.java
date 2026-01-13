@@ -35,6 +35,9 @@ public class SpectrometerController {
 
     private ConnectionType currentConnectionType = ConnectionType.WEBSOCKET;
 
+    private long lastChartUpdateTime = 0;
+    private static final long MIN_UPDATE_INTERVAL_MS = 80;
+
     // ────────────────────────────────────────────────────────────────
     // UI-компоненты (всегда final)
     // ────────────────────────────────────────────────────────────────
@@ -270,6 +273,12 @@ public class SpectrometerController {
     }
 
     private void updateChart() {
+        long now = System.currentTimeMillis();
+        if (now - lastChartUpdateTime < MIN_UPDATE_INTERVAL_MS) {
+            return;
+        }
+        lastChartUpdateTime = now;
+
         chart.redraw(data);
     }
 

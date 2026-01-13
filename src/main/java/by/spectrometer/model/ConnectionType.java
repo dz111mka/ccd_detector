@@ -1,8 +1,8 @@
 package by.spectrometer.model;
 
 public enum ConnectionType {
-    WEBSOCKET("WebSocket (ESP32)"),
-    SERIAL("Serial (Arduino)");
+    WEBSOCKET("WebSocket"),
+    SERIAL("Serial");
 
     private final String displayName;
 

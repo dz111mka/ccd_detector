@@ -39,7 +39,6 @@ public class SerialConnectionService extends ConnectionService {
         super(data, state, onNewSpectrum);
     }
 
-
     // ────────────────────────────────────────────────────────────────
     // Connection
     // ────────────────────────────────────────────────────────────────
@@ -75,7 +74,6 @@ public class SerialConnectionService extends ConnectionService {
         }
     }
 
-
     private void configurePort(SerialPort p) {
         p.setBaudRate(921600);
         p.setNumDataBits(8);
@@ -89,7 +87,6 @@ public class SerialConnectionService extends ConnectionService {
         p.setDTR();
         p.setRTS();
     }
-
 
     // ────────────────────────────────────────────────────────────────
     // Reader thread
@@ -149,7 +146,6 @@ public class SerialConnectionService extends ConnectionService {
         }
     }
 
-
     // ────────────────────────────────────────────────────────────────
     // Processor thread
     // ────────────────────────────────────────────────────────────────
@@ -180,7 +176,6 @@ public class SerialConnectionService extends ConnectionService {
         }
     }
 
-
     private void processAvailableData() {
         synchronized (dataAvailableLock) {
             int available = bytesAvailable;
@@ -188,7 +183,7 @@ public class SerialConnectionService extends ConnectionService {
             if (adcMode == 0 && available >= FRAME_SIZE_12BIT) {
                 LogService.log("Processing 12-bit frame, bytes: " + available);
 
-                for (int i = 1; i < DATA_POINTS; i++) {
+                for (int i = 0; i < DATA_POINTS; i++) {
                     int lo = getByteFromRing() & 0xFF;
                     int hi = getByteFromRing() & 0xFF;
                     data.raw[i] = (hi << 8) | lo;
@@ -258,7 +253,6 @@ public class SerialConnectionService extends ConnectionService {
         }
     }
 
-
     // ────────────────────────────────────────────────────────────────
     // Disconnect
     // ────────────────────────────────────────────────────────────────
@@ -283,7 +277,6 @@ public class SerialConnectionService extends ConnectionService {
     public boolean isConnected() {
         return port != null && port.isOpen();
     }
-
 
     // ────────────────────────────────────────────────────────────────
     // Helpers
