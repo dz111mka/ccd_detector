@@ -15,7 +15,7 @@ public class SerialConnectionService extends ConnectionService {
     private static final int BUFFER_SIZE_12BIT = 7296;   // 3648 * 2
     private static final int BUFFER_SIZE_8BIT  = 3648;
 
-    private static final long FRAME_DELAY_MS   = 150;    // ← ключевая задержка, можно менять
+    private static final long FRAME_DELAY_MS   = 250;    // ← ключевая задержка, можно менять
 
     private SerialPort port;
     private InputStream in;

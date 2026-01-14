@@ -99,14 +99,17 @@ public class SpectrumChart extends LineChart<Number, Number> {
     }
 
     private double computeYValue(SpectrumData data, int idx, boolean useAbsorbance) {
+        double rawValue;
+
         if (useAbsorbance) {
             double denom = data.reference[idx] - data.dark[idx];
-            return denom > 50
+            rawValue = denom > 50
                     ? -Math.log10((data.raw[idx] - data.dark[idx]) / denom)
                     : 0.0;
         } else {
-            return data.raw[idx];
+            rawValue = data.raw[idx];
         }
+        return 4095 - rawValue;
     }
 
     public void setShowAbsorbance(boolean show) {
