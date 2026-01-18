@@ -21,6 +21,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import com.fazecast.jSerialComm.SerialPort;
 
+import java.util.List;
 import java.util.prefs.Preferences;
 
 public class SpectrometerController {
@@ -54,6 +55,8 @@ public class SpectrometerController {
     private Button btnDark;
     private Button btnRef;
     private Button btnCapture;
+    private Button btnMinima;
+    private Button btnSmooth;
 
     // ────────────────────────────────────────────────────────────────
     // Конструктор
@@ -100,6 +103,8 @@ public class SpectrometerController {
         btnDark    = new Button("Тёмный ток");
         btnRef     = new Button("Белая опора");
         btnCapture = new Button("Захватить");
+        btnMinima = new Button("Минимумы");
+        btnSmooth = new Button("Сгладить");
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -160,6 +165,73 @@ public class SpectrometerController {
                 btnCapture.setText("Захватить");
             }
         });
+
+        btnMinima.setOnAction(e -> {
+            if (!chart.isFrozen()) {
+                LogService.log("Smooth is only available in Capture mode.");
+                LogService.log("The chart is frozen: " + chart.isFrozen());
+                LogService.log("capturedY: " + (chart.getCapturedY() != null ? "не null" : "null"));
+                return;
+            }
+
+            LogService.log("Finding minimums on a captured chart...");
+
+            // Добавим отладочную информацию о данных
+            if (chart.getCapturedY() != null) {
+                double minY = Double.MAX_VALUE;
+                double maxY = Double.MIN_VALUE;
+                for (double y : chart.getCapturedY()) {
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+                LogService.log(String.format("capturedY range: min=%.2f, max=%.2f", minY, maxY));
+            }
+
+            // Очищаем предыдущие минимумы
+            chart.clearMinima();
+
+            // Пробуем разные пороги - ВАЖНО: ищем БОЛЬШИЕ значения Y (потому что график инвертирован)
+            List<Integer> minima = chart.findLocalMinima(50, 3000); // Изменили порог!
+
+            // Отладочная информация
+            LogService.log("Minimums found: " + minima.size());
+
+            if (!minima.isEmpty()) {
+                for (int idx : minima) {
+                    double yValue = chart.getCapturedY() != null ? chart.getCapturedY()[idx] : 0;
+                    LogService.log(String.format("  Pixel %d: Y=%.2f, RawValue=%.2f",
+                            idx, yValue, 4095 - yValue));
+                }
+            } else {
+                LogService.log("No minimums found. Try changing the threshold or window size.");
+                // Попробуем разные пороги автоматически
+                testDifferentThresholds();
+            }
+        });
+
+        btnSmooth.setOnAction(e -> {
+            if (!chart.isFrozen()) {
+                LogService.log("Smooth is only available in Capture mode.");
+                return;
+            }
+            chart.smooth(5);   // ширина окна сглаживания
+        });
+    }
+
+    private void testDifferentThresholds() {
+        if (!chart.isFrozen() || chart.getCapturedY() == null) return;
+
+        double[] thresholds = {1000, 1500, 2000, 2500, 3000, 3500};
+        for (double threshold : thresholds) {
+            List<Integer> minima = chart.findLocalMinima(50, threshold);
+            LogService.log(String.format("  Threshold %.0f: found %d minima", threshold, minima.size()));
+            if (!minima.isEmpty()) {
+                // Сбросим и используем этот порог
+                chart.clearMinima();
+                chart.findLocalMinima(50, threshold);
+                break;
+            }
+        }
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -181,6 +253,8 @@ public class SpectrometerController {
                 btnDark,
                 btnRef,
                 btnCapture,
+                btnSmooth,
+                btnMinima,
                 cbAbs
         );
 
@@ -272,7 +346,10 @@ public class SpectrometerController {
     }
 
     private void updateChart() {
-        if (chart.isFrozen()) return;   // << ключевая строка
+        // Если график заморожен - НЕ обновляем его
+        if (chart.isFrozen()) {
+            return;   // << ключевая строка - если график в режиме Capture, данные не обновляются
+        }
 
         long now = System.currentTimeMillis();
         if (now - lastRedraw < REDRAW_INTERVAL_MS) return;

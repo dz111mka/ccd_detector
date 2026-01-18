@@ -4,7 +4,13 @@ import by.spectrometer.model.SpectrumData;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.scene.Node;
 import javafx.scene.chart.*;
+import javafx.scene.control.Tooltip;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 public class SpectrumChart extends LineChart<Number, Number> {
 
@@ -17,10 +23,15 @@ public class SpectrumChart extends LineChart<Number, Number> {
             FXCollections.observableArrayList();
 
     private final Series<Number, Number> spectrumSeries = new Series<>();
+    private final Series<Number, Number> minimaSeries = new Series<>();
+    private final List<Integer> minima = new ArrayList<>();
 
     private boolean showAbsorbance = false;
     private boolean frozen = false;
     private double[] capturedY = null;
+
+    // Флаг, показывающий, были ли найдены минимумы
+    private boolean hasMinima = false;
 
     // ────────────────────────────────────────────────────────────────
     // Конструктор
@@ -66,8 +77,49 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
         spectrumSeries.setData(spectrumPoints);
 
+        // ВАЖНО: Для всего графика отключаем символы
         setCreateSymbols(false);
         setAnimated(false);
+
+        minimaSeries.setName("Minima");
+        // НО для серии минимумов нужно включить символы!
+        getData().add(minimaSeries);
+
+        // Применяем стиль к серии минимумов
+        applyMinimaSeriesStyle();
+    }
+
+    private void applyMinimaSeriesStyle() {
+        // Устанавливаем CSS класс для серии минимумов
+        minimaSeries.getNode().setStyle("-fx-background-color: transparent;");
+
+        // Добавляем слушатель для применения стиля к символам
+        minimaSeries.nodeProperty().addListener((obs, oldNode, newNode) -> {
+            if (newNode != null) {
+                Platform.runLater(() -> {
+                    // Скрываем линию
+                    Node line = newNode.lookup(".chart-series-line");
+                    if (line != null) {
+                        line.setStyle("-fx-stroke: transparent;");
+                    }
+
+                    // Включаем и стилизуем символы
+                    Set<Node> symbols = newNode.lookupAll(".chart-series-symbol");
+                    for (Node symbol : symbols) {
+                        symbol.setStyle("""
+                            -fx-background-color: red;
+                            -fx-background-radius: 5px;
+                            -fx-padding: 5px;
+                            -fx-border-color: white;
+                            -fx-border-width: 2px;
+                            -fx-border-radius: 5px;
+                            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
+                        """);
+                        symbol.setVisible(true);
+                    }
+                });
+            }
+        });
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -77,6 +129,11 @@ public class SpectrumChart extends LineChart<Number, Number> {
         boolean useAbs = showAbsorbance && data.hasDark && data.hasRef;
 
         Platform.runLater(() -> {
+            // Если график заморожен и есть захваченные данные - не обновляем
+            if (frozen && capturedY != null) {
+                return;
+            }
+
             // Полностью очищаем и пересоздаём точки — как в C#
             spectrumSeries.getData().clear();
 
@@ -127,6 +184,9 @@ public class SpectrumChart extends LineChart<Number, Number> {
         frozen = true;
         capturedY = new double[PIXEL_COUNT];
 
+        // Очищаем минимумы при захвате нового графика
+        clearMinima();
+
         for (int i = 0; i < PIXEL_COUNT; i++) {
             capturedY[i] = computeYValue(data, i, false);
         }
@@ -135,6 +195,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
     public void release() {
         frozen = false;
+        hasMinima = false; // Сбрасываем флаг минимумов при выходе из режима захвата
     }
 
     public void redrawFromArray(double[] y) {
@@ -145,6 +206,137 @@ public class SpectrumChart extends LineChart<Number, Number> {
                 pts.add(new XYChart.Data<>(i, y[i]));
             }
             spectrumSeries.setData(pts);
+
+            // Если были найдены минимумы, перерисовываем их поверх новых данных
+            if (hasMinima && !minima.isEmpty()) {
+                drawMinimaMarkers();
+            }
         });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Поиск минимумов
+    // ────────────────────────────────────────────────────────────────
+    public List<Integer> findLocalMinima(int window, double threshold) {
+        minima.clear();
+        if (!frozen || capturedY == null) {
+            System.err.println("The graph is not frozen or there is no captured data!");
+            return minima;
+        }
+
+        System.out.println("Finding minima in captured data, length capturedY: " + capturedY.length);
+
+        for (int i = window; i < PIXEL_COUNT - window; i++) {
+            double v = capturedY[i];
+            boolean isMin = true;
+
+            for (int k = 1; k <= window; k++) {
+                if (capturedY[i - k] <= v || capturedY[i + k] <= v) {
+                    isMin = false;
+                    break;
+                }
+            }
+
+            if (isMin && v < threshold) {
+                minima.add(i);
+            }
+        }
+
+        System.out.println("Minimums found: " + minima.size());
+        hasMinima = !minima.isEmpty();
+        drawMinimaMarkers();
+        return minima;
+    }
+
+    private void drawMinimaMarkers() {
+        Platform.runLater(() -> {
+            minimaSeries.getData().clear();
+
+            System.out.println("Drawing " + minima.size() + " minima markers");
+
+            for (int idx : minima) {
+                if (idx >= 0 && idx < capturedY.length) {
+                    Data<Number, Number> point = new Data<>(idx, capturedY[idx]);
+                    minimaSeries.getData().add(point);
+
+                    // ВАЖНО: Устанавливаем, что для этой точки НУЖЕН символ
+                    point.setExtraValue(new Object()); // Любое значение, чтобы триггернуть создание узла
+
+                    // Сразу устанавливаем стиль через CSS класс
+                    point.nodeProperty().addListener((obs, oldNode, newNode) -> {
+                        if (newNode != null) {
+                            // Применяем стиль
+                            newNode.setStyle("""
+                                -fx-background-color: red;
+                                -fx-background-radius: 5px;
+                                -fx-padding: 5px;
+                                -fx-border-color: white;
+                                -fx-border-width: 2px;
+                                -fx-border-radius: 5px;
+                                -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
+                            """);
+
+                            // Добавляем tooltip
+                            Tooltip tooltip = new Tooltip(String.format("Pixel: %d\nValue: %.2f\nRaw: %.2f",
+                                    idx, capturedY[idx], 4095 - capturedY[idx]));
+                            Tooltip.install(newNode, tooltip);
+
+                            System.out.println("Created marker at pixel " + idx);
+                        }
+                    });
+                }
+            }
+
+            System.out.println("Added " + minimaSeries.getData().size() + " points to minimaSeries");
+
+            // Принудительно обновляем отображение
+            if (minimaSeries.getNode() != null) {
+                minimaSeries.getNode().requestFocus();
+            }
+        });
+    }
+
+    public void clearMinima() {
+        Platform.runLater(() -> {
+            minima.clear();
+            minimaSeries.getData().clear();
+            hasMinima = false;
+        });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Сглаживание
+    // ────────────────────────────────────────────────────────────────
+    public void smooth(int window) {
+        if (!frozen || capturedY == null) return;
+
+        double[] out = new double[PIXEL_COUNT];
+
+        for (int i = 0; i < PIXEL_COUNT; i++) {
+            int a = Math.max(0, i - window);
+            int b = Math.min(PIXEL_COUNT - 1, i + window);
+
+            double sum = 0;
+            for (int j = a; j <= b; j++) sum += capturedY[j];
+
+            out[i] = sum / (b - a + 1);
+        }
+
+        capturedY = out;
+        redrawFromArray(capturedY);
+        // После сглаживания перерисовываем минимумы если они были
+        if (hasMinima) {
+            drawMinimaMarkers();
+        }
+    }
+
+    // Геттер для отладки
+    public double[] getCapturedY() {
+        return capturedY;
+    }
+
+    // Для отладки
+    public int getMinimaCount() {
+        return minima.size();
     }
 }
