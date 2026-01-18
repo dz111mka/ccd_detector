@@ -53,7 +53,6 @@ public class SpectrometerController {
     // Кнопки управления (создаём здесь, чтобы не плодить локальные переменные)
     private Button btnDark;
     private Button btnRef;
-    private Button btnLive;
     private Button btnCapture;
 
     // ────────────────────────────────────────────────────────────────
@@ -100,7 +99,6 @@ public class SpectrometerController {
         // ── Кнопки управления ── (переносим сюда)
         btnDark    = new Button("Тёмный ток");
         btnRef     = new Button("Белая опора");
-        btnLive    = new Button("Live ON");
         btnCapture = new Button("Захватить");
     }
 
@@ -138,13 +136,6 @@ public class SpectrometerController {
         // Кнопки управления
         btnDark.setOnAction(e -> sendCommand("DARK"));
         btnRef.setOnAction(e -> sendCommand("REF"));
-        btnCapture.setOnAction(e -> sendCommand("CAPTURE"));
-
-        btnLive.setOnAction(e -> {
-            boolean turnOn = btnLive.getText().contains("ON");
-            btnLive.setText(turnOn ? "Live OFF" : "Live ON");
-            sendCommand(turnOn ? "LIVE ON" : "LIVE OFF");
-        });
 
         logView.setOnKeyPressed(event -> {
             if (event.isControlDown() && event.getCode() == KeyCode.C) {
@@ -157,6 +148,16 @@ public class SpectrometerController {
                     clipboard.setContent(content);
                     event.consume(); // чтобы не передавалось дальше
                 }
+            }
+        });
+
+        btnCapture.setOnAction(e -> {
+            if (!chart.isFrozen()) {
+                chart.capture(data);
+                btnCapture.setText("Live ON");
+            } else {
+                chart.release();
+                btnCapture.setText("Захватить");
             }
         });
     }
@@ -177,10 +178,9 @@ public class SpectrometerController {
 
         // Панель управления
         HBox controls = new HBox(20,
-                btnDark = new Button("Тёмный ток"),
-                btnRef  = new Button("Белая опора"),
-                btnLive = new Button("Live ON"),
-                btnCapture = new Button("Захватить"),
+                btnDark,
+                btnRef,
+                btnCapture,
                 cbAbs
         );
 
@@ -272,12 +272,12 @@ public class SpectrometerController {
     }
 
     private void updateChart() {
-        long now = System.currentTimeMillis();
-        if (now - lastRedraw < REDRAW_INTERVAL_MS) {
-            return;
-        }
-        lastRedraw = now;
+        if (chart.isFrozen()) return;   // << ключевая строка
 
+        long now = System.currentTimeMillis();
+        if (now - lastRedraw < REDRAW_INTERVAL_MS) return;
+
+        lastRedraw = now;
         chart.redraw(data);
     }
 

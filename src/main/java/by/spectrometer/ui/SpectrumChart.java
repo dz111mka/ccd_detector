@@ -19,6 +19,8 @@ public class SpectrumChart extends LineChart<Number, Number> {
     private final Series<Number, Number> spectrumSeries = new Series<>();
 
     private boolean showAbsorbance = false;
+    private boolean frozen = false;
+    private double[] capturedY = null;
 
     // ────────────────────────────────────────────────────────────────
     // Конструктор
@@ -115,5 +117,34 @@ public class SpectrumChart extends LineChart<Number, Number> {
     public void setShowAbsorbance(boolean show) {
         this.showAbsorbance = show;
         // redraw можно вызвать из контроллера после смены чекбокса
+    }
+
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    public void capture(SpectrumData data) {
+        frozen = true;
+        capturedY = new double[PIXEL_COUNT];
+
+        for (int i = 0; i < PIXEL_COUNT; i++) {
+            capturedY[i] = computeYValue(data, i, false);
+        }
+        redrawFromArray(capturedY);
+    }
+
+    public void release() {
+        frozen = false;
+    }
+
+    public void redrawFromArray(double[] y) {
+        Platform.runLater(() -> {
+            spectrumSeries.getData().clear();
+            ObservableList<XYChart.Data<Number, Number>> pts = FXCollections.observableArrayList();
+            for (int i = 0; i < PIXEL_COUNT; i++) {
+                pts.add(new XYChart.Data<>(i, y[i]));
+            }
+            spectrumSeries.setData(pts);
+        });
     }
 }
