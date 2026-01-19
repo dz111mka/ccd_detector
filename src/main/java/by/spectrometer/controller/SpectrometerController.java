@@ -34,7 +34,7 @@ public class SpectrometerController {
     private final ConnectionState connState = new ConnectionState();
     private ConnectionService connectionService;
 
-    private ConnectionType currentConnectionType = ConnectionType.WEBSOCKET;
+    private ConnectionType currentConnectionType = ConnectionType.SERIAL;
 
     // ────────────────────────────────────────────────────────────────
     // UI-компоненты (всегда final)
@@ -77,15 +77,16 @@ public class SpectrometerController {
     private void initializeUIComponents() {
         // Connection type
         cbConnectionType.setItems(FXCollections.observableArrayList(ConnectionType.values()));
-        cbConnectionType.setValue(ConnectionType.WEBSOCKET);
+        cbConnectionType.setValue(ConnectionType.SERIAL);
 
         // Address field
         tfAddress.setPrefWidth(200);
         tfAddress.setPromptText("ws://IP:порт (например: 192.168.1.77:81)");
+        tfAddress.setVisible(false);
 
         // Serial ports
         cbSerialPorts.setPrefWidth(150);
-        cbSerialPorts.setVisible(false);
+        cbSerialPorts.setVisible(true);
 
         // Log view
         logView.setItems(LogService.getLogs());
