@@ -8,6 +8,8 @@ import by.spectrometer.service.LogService;
 import by.spectrometer.service.SerialConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -21,6 +23,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import com.fazecast.jSerialComm.SerialPort;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.List;
 import java.util.prefs.Preferences;
 
@@ -45,7 +49,6 @@ public class SpectrometerController {
     private final Button btnRefreshPorts = new Button("Обновить");
     private final Button btnConnect = new Button();
     private final Label lblStatus = new Label();
-    private final CheckBox cbAbs = new CheckBox("Показывать Absorbance");
     private final SpectrumChart chart;
     private final ListView<String> logView = new ListView<>();
     private long lastRedraw = 0;
@@ -58,6 +61,36 @@ public class SpectrometerController {
     private Button btnMinima;
     private Button btnSmooth;
 
+    // Управления подключением Arduino
+    private SerialPort arduinoPort;
+    private final ComboBox<String> cbArduinoPort = new ComboBox<>();
+    private final Button btnConnectArduino = new Button("Подключить Arduino");
+    private final Slider sliderAngle = new Slider(0, 180, 90);
+    private final Label lblAngle = new Label("90°");
+    private final Button btnSendAngle = new Button("Установить");
+    private final BooleanProperty arduinoConnected = new SimpleBooleanProperty(false);
+
+    // Режим измерения
+    private final BooleanProperty reflectionMode = new SimpleBooleanProperty(false);
+
+    // UI-компоненты
+    private Button btnMode;                    // "Перейти в Отражение" / "Перейти в Пропускание"
+    private VBox reflectionControls;           // контейнер, который показываем только в reflection-режиме
+    private Slider sliderFineAngle;            // тонкая подстройка угла в режиме отражения
+    private Label lblFineAngle = new Label("0°");
+    private Button btnApplyFine;               // применить тонкую настройку
+
+    // Константы позиций (можно вынести в настройки позже)
+    private static final int TRANSMISSION_POS_MOTOR1 = 0;
+    private static final int TRANSMISSION_POS_MOTOR2 = 0;
+
+    private static final int REFLECTION_BASE_POS_MOTOR1 = 90;   // градусов
+    private static final int REFLECTION_BASE_POS_MOTOR2 = 135;  // градусов
+
+    // Текущие целевые позиции (для отслеживания, куда уже повернули)
+    private int currentPosMotor1 = 0;
+    private int currentPosMotor2 = 0;
+
     // ────────────────────────────────────────────────────────────────
     // Конструктор
     // ────────────────────────────────────────────────────────────────
@@ -69,6 +102,7 @@ public class SpectrometerController {
         buildLayout();
         loadLastConnection();
         refreshSerialPorts();
+        refreshArduinoPorts();
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -106,6 +140,31 @@ public class SpectrometerController {
         btnCapture = new Button("Захватить");
         btnMinima = new Button("Минимумы");
         btnSmooth = new Button("Сгладить");
+
+        cbArduinoPort.setPromptText("Выберите порт Arduino");
+
+        btnConnectArduino.setOnAction(e -> toggleArduinoConnection());
+        btnSendAngle.setOnAction(e -> sendAngleToServo());
+
+        btnMode = new Button("Перейти в режим ОТРАЖЕНИЯ");
+
+        sliderFineAngle = new Slider(-45, 45, 0);   // диапазон подстройки ±45° например
+        sliderFineAngle.setMajorTickUnit(15);
+        sliderFineAngle.setMinorTickCount(3);
+        sliderFineAngle.setShowTickMarks(true);
+        sliderFineAngle.setShowTickLabels(true);
+
+        sliderFineAngle.valueProperty().addListener((obs, old, val) -> {
+            lblFineAngle.setText(String.format("%+.0f°", val.doubleValue()));
+        });
+
+        btnApplyFine = new Button("Применить подстройку");
+
+        reflectionControls = new VBox(10,
+                new Label("Тонкая подстройка угла отражения:"),
+                new HBox(10, sliderFineAngle, lblFineAngle, btnApplyFine)
+        );
+        reflectionControls.setVisible(false);   // изначально скрыто
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -133,11 +192,6 @@ public class SpectrometerController {
         btnRefreshPorts.setOnAction(e -> refreshSerialPorts());
 
         btnConnect.setOnAction(e -> toggleConnection());
-
-        cbAbs.setOnAction(e -> {
-            chart.setShowAbsorbance(cbAbs.isSelected());
-            chart.redraw(data);
-        });
 
         // Кнопки управления
         btnDark.setOnAction(e -> sendCommand("DARK"));
@@ -217,6 +271,20 @@ public class SpectrometerController {
             }
             chart.smooth(5);   // ширина окна сглаживания
         });
+
+        btnMode.setOnAction(e -> toggleMeasurementMode());
+
+        btnApplyFine.setOnAction(e -> applyFineAdjustment());
+
+        // Можно также реагировать на изменение режима через binding
+        reflectionMode.addListener((obs, wasReflection, isNowReflection) -> {
+            updateModeUI();
+            if (isNowReflection) {
+                moveToReflectionPosition();
+            } else {
+                moveToTransmissionPosition();
+            }
+        });
     }
 
     private void testDifferentThresholds() {
@@ -255,8 +323,7 @@ public class SpectrometerController {
                 btnRef,
                 btnCapture,
                 btnSmooth,
-                btnMinima,
-                cbAbs
+                btnMinima
         );
 
         // Основной контейнер
@@ -268,8 +335,22 @@ public class SpectrometerController {
                 controls,
                 chart,
                 new Label("Логи:"),
-                logView
+                logView,
+                reflectionControls
         );
+
+        VBox servoPanel = new VBox(10,
+                new Label("Управление сервоприводом"),
+                new HBox(10,
+                        cbArduinoPort,
+                        btnConnectArduino,
+                        btnMode
+                ),
+                new HBox(10,
+                        new Label("Угол:"), sliderAngle, lblAngle, btnSendAngle
+                )
+        );
+        view.getChildren().add(servoPanel);
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -381,5 +462,155 @@ public class SpectrometerController {
 
     public VBox getView() {
         return view;
+    }
+
+    private void toggleArduinoConnection() {
+        if (arduinoConnected.get()) {
+            if (arduinoPort != null && arduinoPort.isOpen()) {
+                arduinoPort.closePort();
+            }
+            arduinoConnected.set(false);
+            btnConnectArduino.setText("Подключить Arduino");
+            LogService.log("Arduino отключён");
+        } else {
+            connectToArduino();
+        }
+    }
+
+    private void connectToArduino() {
+        String selected = cbArduinoPort.getValue();
+        if (selected == null || selected.isEmpty()) {
+            LogService.log("Выберите порт Arduino");
+            return;
+        }
+
+        String portName = selected.split(" - ")[0].trim();
+
+        arduinoPort = SerialPort.getCommPort(portName);
+        arduinoPort.setBaudRate(115200);
+        arduinoPort.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 100, 100);
+
+        if (arduinoPort.openPort()) {
+            arduinoConnected.set(true);
+            btnConnectArduino.setText("Отключить Arduino");
+            LogService.log("Arduino подключён на " + portName + " @ 115200");
+        } else {
+            LogService.log("Ошибка открытия порта " + portName);
+        }
+    }
+
+    private void sendAngleToServo() {
+        if (!arduinoConnected.get() || arduinoPort == null || !arduinoPort.isOpen()) {
+            LogService.log("Arduino не подключён!");
+            return;
+        }
+
+        int angle = (int) Math.round(sliderAngle.getValue());
+
+        String command = angle + "\n";
+
+        try {
+            OutputStream out = arduinoPort.getOutputStream();
+            out.write(command.getBytes());
+            out.flush();
+            LogService.log("→ Arduino: " + command.trim());
+        } catch (IOException e) {
+            LogService.error("Ошибка отправки угла", e);
+        }
+    }
+
+    private void refreshArduinoPorts() {
+        cbArduinoPort.getItems().clear();
+        SerialPort[] ports = SerialPort.getCommPorts();
+        for (SerialPort p : ports) {
+            cbArduinoPort.getItems().add(p.getSystemPortName() + " - " + p.getDescriptivePortName());
+        }
+        if (!cbArduinoPort.getItems().isEmpty()) {
+            cbArduinoPort.setValue(cbArduinoPort.getItems().getFirst());
+        }
+    }
+
+    private void toggleMeasurementMode() {
+        boolean newMode = !reflectionMode.get();
+        reflectionMode.set(newMode);
+
+        if (newMode) {
+            LogService.log("Переход в режим ОТРАЖЕНИЕ");
+        } else {
+            LogService.log("Переход в режим ПРОПУСКАНИЕ");
+        }
+    }
+
+    private void updateModeUI() {
+        boolean refl = reflectionMode.get();
+
+        reflectionControls.setVisible(refl);
+
+        if (refl) {
+            btnMode.setText("Перейти в режим ПРОПУСКАНИЕ");
+        } else {
+            btnMode.setText("Перейти в режим ОТРАЖЕНИЕ");
+            sliderFineAngle.setValue(0);           // сбрасываем подстройку
+        }
+    }
+
+    private void moveToTransmissionPosition() {
+        sendStepperCommand("HOME");
+        currentPosMotor1 = TRANSMISSION_POS_MOTOR1;
+        currentPosMotor2 = TRANSMISSION_POS_MOTOR2;
+        LogService.log("Установлено положение ПРОПУСКАНИЕ");
+    }
+
+    private void moveToReflectionPosition() {
+        int delta1 = REFLECTION_BASE_POS_MOTOR1 - currentPosMotor1;
+        int delta2 = REFLECTION_BASE_POS_MOTOR2 - currentPosMotor2;
+
+        sendStepperCommand("MOVE 1 " + delta1);
+        sendStepperCommand("MOVE 2 " + delta2);
+
+        currentPosMotor1 = REFLECTION_BASE_POS_MOTOR1;
+        currentPosMotor2 = REFLECTION_BASE_POS_MOTOR2;
+
+        LogService.log("Установлено базовое положение ОТРАЖЕНИЕ (90°, 135°)");
+    }
+
+    private void applyFineAdjustment() {
+        if (!reflectionMode.get()) {
+            LogService.log("Подстройка доступна только в режиме Отражение");
+            return;
+        }
+
+        int delta = (int) Math.round(sliderFineAngle.getValue());
+
+        if (delta == 0) return;
+
+        sendStepperCommand("MOVE 1 " + delta);
+        sendStepperCommand("MOVE 2 " + delta);  // или разные коэффициенты, если нужно
+
+        currentPosMotor1 += delta;
+        currentPosMotor2 += delta;
+
+        LogService.log("Подстройка на " + delta + "° применена");
+
+        // Можно оставить слайдер на новом значении или сбросить в 0
+        // sliderFineAngle.setValue(0);   // чаще всего удобнее сбросить
+    }
+
+    private void sendStepperCommand(String cmd) {
+        if (arduinoPort == null || !arduinoPort.isOpen()) {
+            LogService.log("Arduino не подключён");
+            return;
+        }
+
+        String fullCommand = cmd + "\n";
+
+        try {
+            OutputStream out = arduinoPort.getOutputStream();
+            out.write(fullCommand.getBytes());
+            out.flush();
+            LogService.log("→ Arduino: " + cmd);
+        } catch (IOException e) {
+            LogService.error("Ошибка отправки команды шаговикам", e);
+        }
     }
 }
