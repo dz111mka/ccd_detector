@@ -8,6 +8,7 @@ import by.spectrometer.service.LogService;
 import by.spectrometer.service.SerialConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
+import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
@@ -53,6 +54,8 @@ public class SpectrometerController {
     private final ListView<String> logView = new ListView<>();
     private long lastRedraw = 0;
     private static final long REDRAW_INTERVAL_MS = 100; // 10 fps
+    private final Label lblMotor1Pos = new Label("Мотор 1: 0°");
+    private final Label lblMotor2Pos = new Label("Мотор 2: 0°");
 
     // Кнопки управления (создаём здесь, чтобы не плодить локальные переменные)
     private Button btnDark;
@@ -67,7 +70,6 @@ public class SpectrometerController {
     private final Button btnConnectArduino = new Button("Подключить Arduino");
     private final Slider sliderAngle = new Slider(0, 180, 90);
     private final Label lblAngle = new Label("90°");
-    private final Button btnSendAngle = new Button("Установить");
     private final BooleanProperty arduinoConnected = new SimpleBooleanProperty(false);
 
     // Режим измерения
@@ -126,17 +128,17 @@ public class SpectrometerController {
         logView.setItems(LogService.getLogs());
         logView.setPrefHeight(180);
         logView.setStyle("""
-            -fx-font-family: Consolas;
-            -fx-font-size: 12;
-        """);
+                    -fx-font-family: Consolas;
+                    -fx-font-size: 12;
+                """);
 
         // Chart
         chart.setAnimated(false);
         chart.setCreateSymbols(false);
 
         // ── Кнопки управления ── (переносим сюда)
-        btnDark    = new Button("Тёмный ток");
-        btnRef     = new Button("Белая опора");
+        btnDark = new Button("Тёмный ток");
+        btnRef = new Button("Белая опора");
         btnCapture = new Button("Захватить");
         btnMinima = new Button("Минимумы");
         btnSmooth = new Button("Сгладить");
@@ -144,9 +146,10 @@ public class SpectrometerController {
         cbArduinoPort.setPromptText("Выберите порт Arduino");
 
         btnConnectArduino.setOnAction(e -> toggleArduinoConnection());
-        btnSendAngle.setOnAction(e -> sendAngleToServo());
 
         btnMode = new Button("Перейти в режим ОТРАЖЕНИЯ");
+        btnMode.setDisable(true);  // Изначально недоступна
+        btnMode.setStyle("-fx-opacity: 0.6;");  // Визуальная индикация
 
         sliderFineAngle = new Slider(-45, 45, 0);   // диапазон подстройки ±45° например
         sliderFineAngle.setMajorTickUnit(15);
@@ -165,6 +168,10 @@ public class SpectrometerController {
                 new HBox(10, sliderFineAngle, lblFineAngle, btnApplyFine)
         );
         reflectionControls.setVisible(false);   // изначально скрыто
+
+        lblMotor1Pos.setStyle("-fx-font-weight: bold;");
+        lblMotor2Pos.setStyle("-fx-font-weight: bold;");
+
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -345,12 +352,13 @@ public class SpectrometerController {
                         cbArduinoPort,
                         btnConnectArduino,
                         btnMode
-                ),
-                new HBox(10,
-                        new Label("Угол:"), sliderAngle, lblAngle, btnSendAngle
                 )
         );
         view.getChildren().add(servoPanel);
+
+        VBox positionDisplay = new VBox(5, lblMotor1Pos, lblMotor2Pos);
+        positionDisplay.setPadding(new Insets(10, 0, 0, 0));
+        view.getChildren().add(positionDisplay);
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -406,7 +414,7 @@ public class SpectrometerController {
         if (address == null || address.isEmpty()) return;
 
         connectionService = switch (currentConnectionType) {
-            case SERIAL    -> new SerialConnectionService(data, connState, this::updateChart);
+            case SERIAL -> new SerialConnectionService(data, connState, this::updateChart);
             case WEBSOCKET -> new WebSocketConnectionService(data, connState, this::updateChart);
         };
 
@@ -471,16 +479,17 @@ public class SpectrometerController {
             }
             arduinoConnected.set(false);
             btnConnectArduino.setText("Подключить Arduino");
-            LogService.log("Arduino отключён");
+            LogService.log("Arduino is disconnected");
         } else {
             connectToArduino();
         }
+        updateBtnModeState();
     }
 
     private void connectToArduino() {
         String selected = cbArduinoPort.getValue();
         if (selected == null || selected.isEmpty()) {
-            LogService.log("Выберите порт Arduino");
+            LogService.log("Select port Arduino");
             return;
         }
 
@@ -493,15 +502,34 @@ public class SpectrometerController {
         if (arduinoPort.openPort()) {
             arduinoConnected.set(true);
             btnConnectArduino.setText("Отключить Arduino");
-            LogService.log("Arduino подключён на " + portName + " @ 115200");
+            LogService.log("Arduino is connected on " + portName + " @ 115200");
+            moveToZeroPosition();
+            updateBtnModeState();
         } else {
-            LogService.log("Ошибка открытия порта " + portName);
+            LogService.log("Error opening port " + portName);
         }
+    }
+
+    private void moveToZeroPosition() {
+        sendStepperCommand("HOME");
+        currentPosMotor1 = 0;
+        currentPosMotor2 = 0;
+        LogService.log("The engines have been moved to the zero position. (0°, 0°)");
+
+        // Обновляем отображение позиции
+        updatePositionDisplay();
+    }
+
+    private void updatePositionDisplay() {
+        Platform.runLater(() -> {
+            lblMotor1Pos.setText("Stepper 1: " + currentPosMotor1 + "°");
+            lblMotor2Pos.setText("Stepper 2: " + currentPosMotor2 + "°");
+        });
     }
 
     private void sendAngleToServo() {
         if (!arduinoConnected.get() || arduinoPort == null || !arduinoPort.isOpen()) {
-            LogService.log("Arduino не подключён!");
+            LogService.log("Arduino is not connect!");
             return;
         }
 
@@ -515,7 +543,7 @@ public class SpectrometerController {
             out.flush();
             LogService.log("→ Arduino: " + command.trim());
         } catch (IOException e) {
-            LogService.error("Ошибка отправки угла", e);
+            LogService.error("Error sending angle", e);
         }
     }
 
@@ -535,9 +563,9 @@ public class SpectrometerController {
         reflectionMode.set(newMode);
 
         if (newMode) {
-            LogService.log("Переход в режим ОТРАЖЕНИЕ");
+            LogService.log("Switching to REFLECTION mode");
         } else {
-            LogService.log("Переход в режим ПРОПУСКАНИЕ");
+            LogService.log("Switching to TRANSFERENCE mode");
         }
     }
 
@@ -558,7 +586,8 @@ public class SpectrometerController {
         sendStepperCommand("HOME");
         currentPosMotor1 = TRANSMISSION_POS_MOTOR1;
         currentPosMotor2 = TRANSMISSION_POS_MOTOR2;
-        LogService.log("Установлено положение ПРОПУСКАНИЕ");
+        updatePositionDisplay();
+        LogService.log("selected TRANSFERENCE mode");
     }
 
     private void moveToReflectionPosition() {
@@ -570,8 +599,9 @@ public class SpectrometerController {
 
         currentPosMotor1 = REFLECTION_BASE_POS_MOTOR1;
         currentPosMotor2 = REFLECTION_BASE_POS_MOTOR2;
+        updatePositionDisplay();
 
-        LogService.log("Установлено базовое положение ОТРАЖЕНИЕ (90°, 135°)");
+        LogService.log("selected REFLECTION mode (90°, 135°)");
     }
 
     private void applyFineAdjustment() {
@@ -589,6 +619,7 @@ public class SpectrometerController {
 
         currentPosMotor1 += delta;
         currentPosMotor2 += delta;
+        updatePositionDisplay();
 
         LogService.log("Подстройка на " + delta + "° применена");
 
@@ -611,6 +642,20 @@ public class SpectrometerController {
             LogService.log("→ Arduino: " + cmd);
         } catch (IOException e) {
             LogService.error("Ошибка отправки команды шаговикам", e);
+        }
+
+        LogService.log("→ Arduino: " + cmd + " (текущая позиция: M1=" +
+                currentPosMotor1 + "°, M2=" + currentPosMotor2 + ")");
+    }
+
+    private void updateBtnModeState() {
+        boolean canEnable = arduinoConnected.get();
+        btnMode.setDisable(!canEnable);
+
+        if (canEnable) {
+            btnMode.setStyle("");
+        } else {
+            btnMode.setStyle("-fx-opacity: 0.6;");
         }
     }
 }
