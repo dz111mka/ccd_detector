@@ -342,17 +342,19 @@ public class SpectrometerController {
                 controls,
                 chart,
                 new Label("Логи:"),
-                logView,
-                reflectionControls
+                logView
         );
 
         VBox servoPanel = new VBox(10,
                 new Label("Управление сервоприводом"),
-                new HBox(10,
+                new VBox(new HBox(10,
                         cbArduinoPort,
                         btnConnectArduino,
                         btnMode
-                )
+
+                ),
+                        reflectionControls)
+
         );
         view.getChildren().add(servoPanel);
 
