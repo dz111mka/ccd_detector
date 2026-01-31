@@ -15,8 +15,8 @@
 
 ### Требования
 - Java 21+
-- JDK с поддержкой JavaFX (Liberica Full JDK, BellSoft, Azul Zulu и др.)
-- Gradle 8.x (wrapper уже в проекте)
+- JDK с поддержкой JavaFX
+- Gradle 9.x (wrapper уже в проекте)
 
 ### Зависимости
 - JavaFX 21
