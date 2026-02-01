@@ -9,7 +9,6 @@ import by.spectrometer.service.SerialConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
 import by.spectrometer.util.Constants;
-import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
@@ -26,8 +25,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import com.fazecast.jSerialComm.SerialPort;
 
-import java.io.IOException;
-import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.DoubleSummaryStatistics;
 import java.util.List;
@@ -88,6 +85,8 @@ public class SpectrometerController {
     private int currentPosMotor1 = 0;
     private int currentPosMotor2 = 0;
 
+    private final ArduinoController arduinoController = new ArduinoController();
+
     // ────────────────────────────────────────────────────────────────
     // Конструктор и инициализация
     // ────────────────────────────────────────────────
@@ -108,7 +107,6 @@ public class SpectrometerController {
     private void initializeUI() {
         initializeConnectionUI();
         initializeMeasurementUI();
-        initializeArduinoUI();
         initializeLogView();
         configureVisualStyles();
     }
@@ -128,13 +126,6 @@ public class SpectrometerController {
     private void initializeMeasurementUI() {
         chart.setAnimated(false);
         chart.setCreateSymbols(false);
-    }
-
-    private void initializeArduinoUI() {
-        cbArduinoPort.setPromptText("Выберите порт Arduino");
-        btnMode.setDisable(true);
-        lblMotor1Pos.setStyle("-fx-font-weight: bold;");
-        lblMotor2Pos.setStyle("-fx-font-weight: bold;");
     }
 
     private void initializeLogView() {
@@ -204,9 +195,7 @@ public class SpectrometerController {
     private void setupEventHandlers() {
         setupConnectionEventHandlers();
         setupMeasurementEventHandlers();
-        setupArduinoEventHandlers();
         setupLogEventHandlers();
-        setupModeEventHandlers();
     }
 
     private void setupConnectionEventHandlers() {
@@ -223,20 +212,8 @@ public class SpectrometerController {
         btnMinima.setOnAction(e -> findMinima());
     }
 
-    private void setupArduinoEventHandlers() {
-        btnConnectArduino.setOnAction(e -> toggleArduinoConnection());
-        btnApplyFine.setOnAction(e -> applyFineAdjustment());
-    }
-
     private void setupLogEventHandlers() {
         logView.setOnKeyPressed(this::handleLogKeyPress);
-    }
-
-    private void setupModeEventHandlers() {
-        btnMode.setOnAction(e -> toggleMeasurementMode());
-        reflectionMode.addListener((obs, wasReflection, isNowReflection) ->
-                handleMeasurementModeChange(isNowReflection)
-        );
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -249,8 +226,7 @@ public class SpectrometerController {
                 chart,
                 new Label("Логи:"),
                 logView,
-                buildArduinoPanel(),
-                buildPositionDisplay()
+                arduinoController.getView()
         );
     }
 
@@ -268,22 +244,6 @@ public class SpectrometerController {
 
     private HBox buildMeasurementControls() {
         return new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima);
-    }
-
-    private VBox buildArduinoPanel() {
-        HBox connectionBox = new HBox(10, cbArduinoPort, btnConnectArduino, btnMode);
-        VBox panel = new VBox(10,
-                new Label("Управление сервоприводом"),
-                connectionBox,
-                reflectionControls
-        );
-        return panel;
-    }
-
-    private VBox buildPositionDisplay() {
-        VBox display = new VBox(5, lblMotor1Pos, lblMotor2Pos);
-        display.setPadding(new Insets(10, 0, 0, 0));
-        return display;
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -492,131 +452,6 @@ public class SpectrometerController {
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Arduino управление
-    // ────────────────────────────────────────────────
-    private void toggleArduinoConnection() {
-        if (arduinoConnected.get()) {
-            disconnectArduino();
-        } else {
-            connectToArduino();
-        }
-        updateArduinoModeButton();
-    }
-
-    private void connectToArduino() {
-        String selected = cbArduinoPort.getValue();
-        if (selected == null || selected.isEmpty()) {
-            LogService.log("Select port Arduino");
-            return;
-        }
-
-        String portName = selected.split(" - ")[0].trim();
-        arduinoPort = SerialPort.getCommPort(portName);
-        arduinoPort.setBaudRate(115200);
-        arduinoPort.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 100, 100);
-
-        if (arduinoPort.openPort()) {
-            arduinoConnected.set(true);
-            btnConnectArduino.setText("Отключить Arduino");
-            LogService.log("Arduino is connected on " + portName + " @ 115200");
-            moveToZeroPosition();
-            updateArduinoModeButton();
-        } else {
-            LogService.log("Error opening port " + portName);
-        }
-    }
-
-    private void disconnectArduino() {
-        if (arduinoPort != null && arduinoPort.isOpen()) {
-            arduinoPort.closePort();
-        }
-        arduinoConnected.set(false);
-        btnConnectArduino.setText("Подключить Arduino");
-        LogService.log("Arduino is disconnected");
-    }
-
-    private void moveToZeroPosition() {
-        sendStepperCommand("HOME");
-        currentPosMotor1 = 0;
-        currentPosMotor2 = 0;
-        LogService.log("The engines have been moved to the zero position. (0°, 0°)");
-        updatePositionDisplay();
-    }
-
-    private void updatePositionDisplay() {
-        Platform.runLater(() -> {
-            lblMotor1Pos.setText("Stepper 1: " + currentPosMotor1 + "°");
-            lblMotor2Pos.setText("Stepper 2: " + currentPosMotor2 + "°");
-        });
-    }
-
-    private void toggleMeasurementMode() {
-        boolean newMode = !reflectionMode.get();
-        reflectionMode.set(newMode);
-        LogService.log("Switching to " + (newMode ? "REFLECTION" : "TRANSMISSION") + " mode");
-    }
-
-    private void handleMeasurementModeChange(boolean isReflectionMode) {
-        updateModeUI(isReflectionMode);
-        if (isReflectionMode) {
-            moveToReflectionPosition();
-        } else {
-            moveToTransmissionPosition();
-        }
-    }
-
-    private void updateModeUI(boolean isReflectionMode) {
-        reflectionControls.setVisible(isReflectionMode);
-        btnMode.setText(isReflectionMode
-                ? "Перейти в режим ПРОПУСКАНИЕ"
-                : "Перейти в режим ОТРАЖЕНИЕ");
-
-        if (!isReflectionMode) {
-            sliderFineAngle.setValue(0);
-        }
-    }
-
-    private void moveToTransmissionPosition() {
-        sendStepperCommand("HOME");
-        currentPosMotor1 = Constants.TRANSMISSION_POS_MOTOR1;
-        currentPosMotor2 = Constants.TRANSMISSION_POS_MOTOR2;
-        updatePositionDisplay();
-        LogService.log("selected TRANSFERENCE mode");
-    }
-
-    private void moveToReflectionPosition() {
-        int delta1 = Constants.REFLECTION_BASE_POS_MOTOR1 - currentPosMotor1;
-        int delta2 = Constants.REFLECTION_BASE_POS_MOTOR2 - currentPosMotor2;
-
-        sendStepperCommand("MOVE 1 " + delta1);
-        sendStepperCommand("MOVE 2 " + delta2);
-
-        currentPosMotor1 = Constants.REFLECTION_BASE_POS_MOTOR1;
-        currentPosMotor2 = Constants.REFLECTION_BASE_POS_MOTOR2;
-        updatePositionDisplay();
-        LogService.log("selected REFLECTION mode (90°, 135°)");
-    }
-
-    private void applyFineAdjustment() {
-        if (!reflectionMode.get()) {
-            LogService.log("Подстройка доступна только в режиме Отражение");
-            return;
-        }
-
-        int delta = (int) Math.round(sliderFineAngle.getValue());
-        if (delta == 0) return;
-
-        sendStepperCommand("MOVE 1 " + delta);
-        sendStepperCommand("MOVE 2 " + delta);
-
-        currentPosMotor1 += delta;
-        currentPosMotor2 += delta;
-        updatePositionDisplay();
-
-        LogService.log("Подстройка на " + delta + "° применена");
-    }
-
-    // ────────────────────────────────────────────────────────────────
     // Вспомогательные методы
     // ────────────────────────────────────────────────
     private void sendCommand(String command) {
@@ -624,33 +459,6 @@ public class SpectrometerController {
         if (connectionService != null && connectionService.isConnected()) {
             connectionService.sendCommand(command);
         }
-    }
-
-    private void sendStepperCommand(String command) {
-        if (!isArduinoConnected()) {
-            LogService.log("Arduino не подключён");
-            return;
-        }
-
-        try {
-            OutputStream out = arduinoPort.getOutputStream();
-            out.write((command + "\n").getBytes());
-            out.flush();
-            LogService.log("→ Arduino: " + command + " (текущая позиция: M1=" +
-                    currentPosMotor1 + "°, M2=" + currentPosMotor2 + ")");
-        } catch (IOException e) {
-            LogService.error("Ошибка отправки команды шаговикам", e);
-        }
-    }
-
-    private boolean isArduinoConnected() {
-        return arduinoPort != null && arduinoPort.isOpen();
-    }
-
-    private void updateArduinoModeButton() {
-        boolean canEnable = arduinoConnected.get();
-        btnMode.setDisable(!canEnable);
-        btnMode.setStyle(canEnable ? "" : "-fx-opacity: 0.6;");
     }
 
     private void handleLogKeyPress(KeyEvent event) {
