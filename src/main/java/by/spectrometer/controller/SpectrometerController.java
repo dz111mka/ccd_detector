@@ -9,8 +9,6 @@ import by.spectrometer.service.SerialConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
 import by.spectrometer.util.Constants;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -34,15 +32,13 @@ public class SpectrometerController {
 
     // ────────────────────────────────────────────────────────────────
     // Модели данных
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private final SpectrumData data = new SpectrumData();
     private final ConnectionState connState = new ConnectionState();
-    private final BooleanProperty arduinoConnected = new SimpleBooleanProperty(false);
-    private final BooleanProperty reflectionMode = new SimpleBooleanProperty(false);
 
     // ────────────────────────────────────────────────────────────────
     // UI компоненты
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private final VBox view = new VBox(15);
     private final SpectrumChart chart;
     private final ListView<String> logView = new ListView<>();
@@ -51,7 +47,6 @@ public class SpectrometerController {
     private final ComboBox<ConnectionType> cbConnectionType = new ComboBox<>();
     private final TextField tfAddress = new TextField();
     private final ComboBox<String> cbSerialPorts = new ComboBox<>();
-    private final Button btnRefreshPorts = new Button("Обновить");
     private final Button btnConnect = new Button();
     private final Label lblStatus = new Label();
 
@@ -62,34 +57,22 @@ public class SpectrometerController {
     private final Button btnMinima = new Button("Минимумы");
     private final Button btnSmooth = new Button("Сгладить");
 
-    // Компоненты управления Arduino
-    private final ComboBox<String> cbArduinoPort = new ComboBox<>();
-    private final Button btnConnectArduino = new Button("Подключить Arduino");
-    private final Button btnMode = new Button("Перейти в режим ОТРАЖЕНИЯ");
-    private final Label lblMotor1Pos = new Label("Мотор 1: 0°");
-    private final Label lblMotor2Pos = new Label("Мотор 2: 0°");
-
-    // Компоненты тонкой настройки
-    private final VBox reflectionControls = new VBox(10);
-    private final Slider sliderFineAngle = new Slider(Constants.FINE_ADJUSTMENT_MIN, Constants.FINE_ADJUSTMENT_MAX, 0);
-    private final Label lblFineAngle = new Label("0°");
-    private final Button btnApplyFine = new Button("Применить подстройку");
+    // ────────────────────────────────────────────────────────────────
+    // Контроллеры для Arduino
+    // ────────────────────────────────────────────────────────────────
+    private final ArduinoConnectionController arduinoConnectionController = new ArduinoConnectionController();
+    private final StepperMotorController stepperMotorController = new StepperMotorController();
 
     // ────────────────────────────────────────────────────────────────
     // Внутреннее состояние
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private ConnectionService connectionService;
     private ConnectionType currentConnectionType = ConnectionType.SERIAL;
-    private SerialPort arduinoPort;
     private long lastRedraw = 0;
-    private int currentPosMotor1 = 0;
-    private int currentPosMotor2 = 0;
-
-    private final ArduinoController arduinoController = new ArduinoController();
 
     // ────────────────────────────────────────────────────────────────
-    // Конструктор и инициализация
-    // ────────────────────────────────────────────────
+    // Конструктор
+    // ────────────────────────────────────────────────────────────────
     public SpectrometerController() {
         chart = new SpectrumChart(data);
         initializeUI();
@@ -98,12 +81,12 @@ public class SpectrometerController {
         buildLayout();
         loadConfiguration();
         refreshPorts();
-        setupReflectionControls();
+        setupArduinoControllers();
     }
 
     // ────────────────────────────────────────────────────────────────
     // Инициализация UI
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private void initializeUI() {
         initializeConnectionUI();
         initializeMeasurementUI();
@@ -137,35 +120,31 @@ public class SpectrometerController {
         """);
     }
 
-    private void setupReflectionControls() {
-        sliderFineAngle.setMajorTickUnit(15);
-        sliderFineAngle.setMinorTickCount(3);
-        sliderFineAngle.setShowTickMarks(true);
-        sliderFineAngle.setShowTickLabels(true);
-        reflectionControls.setVisible(false);
-
-        HBox fineAdjustmentBox = new HBox(10, sliderFineAngle, lblFineAngle, btnApplyFine);
-        reflectionControls.getChildren().addAll(
-                new Label("Тонкая подстройка угла отражения:"),
-                fineAdjustmentBox
-        );
-    }
-
     private void configureVisualStyles() {
         view.setPadding(new Insets(20));
         view.setStyle("-fx-background-color: #f4f4f4;");
+    }
 
-        if (!arduinoConnected.get()) {
-            btnMode.setStyle("-fx-opacity: 0.6;");
-        }
+    // ────────────────────────────────────────────────────────────────
+    // Настройка связей между контроллерами Arduino
+    // ────────────────────────────────────────────────────────────────
+    private void setupArduinoControllers() {
+        // Когда меняется порт в контроллере подключения, передаем его контроллеру двигателей
+        arduinoConnectionController.arduinoPortProperty().addListener((obs, oldPort, newPort) -> {
+            stepperMotorController.setArduinoPort(newPort);
+
+            // При подключении перемещаем в нулевую позицию
+            if (newPort != null && newPort.isOpen()) {
+                stepperMotorController.moveToZeroPosition();
+            }
+        });
     }
 
     // ────────────────────────────────────────────────────────────────
     // Настройка привязок
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private void setupBindings() {
         bindConnectionStatus();
-        bindFineAdjustmentSlider();
         bindLogAutoScroll();
     }
 
@@ -177,12 +156,6 @@ public class SpectrometerController {
         );
     }
 
-    private void bindFineAdjustmentSlider() {
-        sliderFineAngle.valueProperty().addListener((obs, old, val) ->
-                lblFineAngle.setText(String.format("%+.0f°", val.doubleValue()))
-        );
-    }
-
     private void bindLogAutoScroll() {
         LogService.getLogs().addListener((ListChangeListener<String>) change ->
                 logView.scrollTo(LogService.getLogs().size() - 1)
@@ -191,7 +164,7 @@ public class SpectrometerController {
 
     // ────────────────────────────────────────────────────────────────
     // Обработчики событий
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private void setupEventHandlers() {
         setupConnectionEventHandlers();
         setupMeasurementEventHandlers();
@@ -200,7 +173,6 @@ public class SpectrometerController {
 
     private void setupConnectionEventHandlers() {
         cbConnectionType.setOnAction(e -> handleConnectionTypeChange());
-        btnRefreshPorts.setOnAction(e -> refreshPorts());
         btnConnect.setOnAction(e -> toggleConnection());
     }
 
@@ -218,7 +190,7 @@ public class SpectrometerController {
 
     // ────────────────────────────────────────────────────────────────
     // Построение layout
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private void buildLayout() {
         view.getChildren().addAll(
                 buildConnectionPanel(),
@@ -226,7 +198,8 @@ public class SpectrometerController {
                 chart,
                 new Label("Логи:"),
                 logView,
-                arduinoController.getView()
+                arduinoConnectionController.getView(),
+                stepperMotorController.getView()
         );
     }
 
@@ -236,7 +209,7 @@ public class SpectrometerController {
         panel.getChildren().addAll(
                 new Label("Тип:"), cbConnectionType,
                 new Label("Адрес:"), tfAddress,
-                cbSerialPorts, btnRefreshPorts,
+                cbSerialPorts,
                 btnConnect, lblStatus
         );
         return panel;
@@ -247,8 +220,8 @@ public class SpectrometerController {
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Основная логика
-    // ────────────────────────────────────────────────
+    // Основная логика подключения к спектрометру
+    // ────────────────────────────────────────────────────────────────
     private void handleConnectionTypeChange() {
         currentConnectionType = cbConnectionType.getValue();
         boolean isSerial = currentConnectionType == ConnectionType.SERIAL;
@@ -262,11 +235,6 @@ public class SpectrometerController {
     }
 
     private void refreshPorts() {
-        refreshSpectrometerPorts();
-        refreshArduinoPorts();
-    }
-
-    private void refreshSpectrometerPorts() {
         cbSerialPorts.getItems().clear();
         Arrays.stream(SerialPort.getCommPorts())
                 .forEach(port -> cbSerialPorts.getItems().add(
@@ -275,18 +243,6 @@ public class SpectrometerController {
 
         if (!cbSerialPorts.getItems().isEmpty()) {
             cbSerialPorts.setValue(cbSerialPorts.getItems().getFirst());
-        }
-    }
-
-    private void refreshArduinoPorts() {
-        cbArduinoPort.getItems().clear();
-        Arrays.stream(SerialPort.getCommPorts())
-                .forEach(port -> cbArduinoPort.getItems().add(
-                        port.getSystemPortName() + " - " + port.getDescriptivePortName()
-                ));
-
-        if (!cbArduinoPort.getItems().isEmpty()) {
-            cbArduinoPort.setValue(cbArduinoPort.getItems().getFirst());
         }
     }
 
@@ -341,6 +297,9 @@ public class SpectrometerController {
         }
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Логика управления измерениями
+    // ────────────────────────────────────────────────────────────────
     private void toggleCaptureMode() {
         if (!chart.isFrozen()) {
             chart.capture(data);
@@ -429,7 +388,7 @@ public class SpectrometerController {
 
     // ────────────────────────────────────────────────────────────────
     // Конфигурация
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private void loadConfiguration() {
         Preferences prefs = Preferences.userNodeForPackage(getClass());
         ConnectionType type = ConnectionType.valueOf(
@@ -453,7 +412,7 @@ public class SpectrometerController {
 
     // ────────────────────────────────────────────────────────────────
     // Вспомогательные методы
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
     private void sendCommand(String command) {
         LogService.log("CMD ▶ " + command);
         if (connectionService != null && connectionService.isConnected()) {
