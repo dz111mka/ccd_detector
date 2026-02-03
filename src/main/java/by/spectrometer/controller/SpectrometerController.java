@@ -71,6 +71,13 @@ public class SpectrometerController {
     private long lastRedraw = 0;
 
     // ────────────────────────────────────────────────────────────────
+    // Кнопки масштаба
+    // ────────────────────────────────────────────────────────────────
+    private final Button btnZoom = new Button("🔍");
+    private final Button btnZoomBack = new Button("↩");
+
+
+    // ────────────────────────────────────────────────────────────────
     // Конструктор
     // ────────────────────────────────────────────────────────────────
     public SpectrometerController() {
@@ -182,6 +189,15 @@ public class SpectrometerController {
         btnCapture.setOnAction(e -> toggleCaptureMode());
         btnSmooth.setOnAction(e -> applySmoothing());
         btnMinima.setOnAction(e -> findMinima());
+        btnZoom.setOnAction(e ->
+                chart.setZoomMode(!chart.isZoomMode()
+                ));
+
+        btnZoomBack.setOnAction(e -> {
+            if (chart.canZoomBack()) {
+                chart.zoomBack();
+            }
+        });
     }
 
     private void setupLogEventHandlers() {
@@ -216,7 +232,7 @@ public class SpectrometerController {
     }
 
     private HBox buildMeasurementControls() {
-        return new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima);
+        return new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnZoom, btnZoomBack);
     }
 
     // ────────────────────────────────────────────────────────────────
