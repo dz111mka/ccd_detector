@@ -9,6 +9,7 @@ import by.spectrometer.service.SerialConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
 import by.spectrometer.util.Constants;
+import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -69,6 +70,14 @@ public class SpectrometerController {
     private ConnectionService connectionService;
     private ConnectionType currentConnectionType = ConnectionType.SERIAL;
     private long lastRedraw = 0;
+
+    // ────────────────────────────────────────────────────────────────
+    // Кнопки масштаба
+    // ────────────────────────────────────────────────────────────────
+    private final Button btnZoom = new Button("🔍");
+    private final Button btnZoomBack = new Button("↶");
+    private final Button btnZoomForward = new Button("↷");
+
 
     // ────────────────────────────────────────────────────────────────
     // Конструктор
@@ -182,6 +191,12 @@ public class SpectrometerController {
         btnCapture.setOnAction(e -> toggleCaptureMode());
         btnSmooth.setOnAction(e -> applySmoothing());
         btnMinima.setOnAction(e -> findMinima());
+        btnZoom.setOnAction(e ->
+                chart.setZoomMode(!chart.isZoomMode()
+                ));
+
+        btnZoomBack.setOnAction(e -> chart.zoomBack());
+        btnZoomForward.setOnAction(e -> chart.zoomForward());
     }
 
     private void setupLogEventHandlers() {
@@ -216,7 +231,7 @@ public class SpectrometerController {
     }
 
     private HBox buildMeasurementControls() {
-        return new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima);
+        return new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnZoom, btnZoomBack, btnZoomForward);
     }
 
     // ────────────────────────────────────────────────────────────────

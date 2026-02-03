@@ -1,16 +1,21 @@
 package by.spectrometer.ui;
 
+import by.spectrometer.model.ChartScale;
 import by.spectrometer.model.SpectrumData;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.geometry.Point2D;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.chart.*;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class SpectrumChart extends LineChart<Number, Number> {
 
@@ -33,6 +38,18 @@ public class SpectrumChart extends LineChart<Number, Number> {
     // Флаг, показывающий, были ли найдены минимумы
     private boolean hasMinima = false;
 
+    // Зум
+    private boolean zoomMode = false;
+    private final Deque<ChartScale> backHistory = new ArrayDeque<>();
+    private final Deque<ChartScale> forwardHistory = new ArrayDeque<>();
+
+    private Rectangle zoomRect;
+    private double dragStartX;
+    private double dragStartY;
+
+    private Node plotArea;
+
+
     // ────────────────────────────────────────────────────────────────
     // Конструктор
     // ────────────────────────────────────────────────────────────────
@@ -41,7 +58,8 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
         initializeAxes();
         initializeSeries();
-        redraw(initialData);  // начальное заполнение
+        redraw(initialData);
+        initializeZoom();
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -328,6 +346,152 @@ public class SpectrumChart extends LineChart<Number, Number> {
         if (hasMinima) {
             drawMinimaMarkers();
         }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Масштаб
+    // ────────────────────────────────────────────────────────────────
+    public void setZoomMode(boolean enabled) {
+        zoomMode = enabled;
+        setCursor(enabled ? Cursor.CROSSHAIR : Cursor.DEFAULT);
+    }
+
+    public boolean canZoomBack() {
+        return !backHistory.isEmpty();
+    }
+
+    public void zoomBack() {
+        if (backHistory.isEmpty()) return;
+
+        forwardHistory.push(currentScale());
+        applyScale(backHistory.pop());
+    }
+
+    public boolean canZoomForward() {
+        return !forwardHistory.isEmpty();
+    }
+
+    public void zoomForward() {
+        if (forwardHistory.isEmpty()) return;
+
+        backHistory.push(currentScale());
+        applyScale(forwardHistory.pop());
+    }
+
+    private void initializeZoom() {
+        zoomRect = new Rectangle();
+        zoomRect.setManaged(false);
+        zoomRect.setVisible(false);
+        zoomRect.setStroke(Color.DODGERBLUE);
+        zoomRect.setFill(Color.web("#1e90ff33"));
+        zoomRect.setStrokeWidth(1.5);
+
+        getPlotChildren().add(zoomRect);
+
+        setOnMousePressed(this::onZoomStart);
+        setOnMouseDragged(this::onZoomDrag);
+        setOnMouseReleased(this::onZoomEnd);
+
+        Platform.runLater(() -> plotArea = lookup(".chart-plot-background"));
+    }
+
+    private void onZoomStart(MouseEvent e) {
+        if (!zoomMode || e.getButton() != MouseButton.PRIMARY) return;
+
+        Point2D p = toPlotArea(e);
+
+        dragStartX = p.getX();
+        dragStartY = p.getY();
+
+        zoomRect.setX(dragStartX);
+        zoomRect.setY(dragStartY);
+        zoomRect.setWidth(0);
+        zoomRect.setHeight(0);
+        zoomRect.setVisible(true);
+    }
+
+    private void onZoomDrag(MouseEvent e) {
+        if (!zoomMode || !zoomRect.isVisible()) return;
+
+        Point2D p = toPlotArea(e);
+
+        double x = Math.min(p.getX(), dragStartX);
+        double y = Math.min(p.getY(), dragStartY);
+
+        zoomRect.setX(x);
+        zoomRect.setY(y);
+        zoomRect.setWidth(Math.abs(p.getX() - dragStartX));
+        zoomRect.setHeight(Math.abs(p.getY() - dragStartY));
+    }
+
+    private void onZoomEnd(MouseEvent e) {
+        if (!zoomMode || !zoomRect.isVisible()) return;
+
+        zoomRect.setVisible(false);
+
+        if (zoomRect.getWidth() < 10 || zoomRect.getHeight() < 10) return;
+
+        saveBeforeScaleChange();
+        applyZoomFromRect();
+    }
+
+    private void applyZoomFromRect() {
+        NumberAxis xAxis = (NumberAxis) getXAxis();
+        NumberAxis yAxis = (NumberAxis) getYAxis();
+
+        double xMin = xAxis.getValueForDisplay(zoomRect.getX()).doubleValue();
+        double xMax = xAxis.getValueForDisplay(
+                zoomRect.getX() + zoomRect.getWidth()
+        ).doubleValue();
+
+        double yMax = yAxis.getValueForDisplay(zoomRect.getY()).doubleValue();
+        double yMin = yAxis.getValueForDisplay(
+                zoomRect.getY() + zoomRect.getHeight()
+        ).doubleValue();
+
+        xAxis.setAutoRanging(false);
+        yAxis.setAutoRanging(false);
+
+        xAxis.setLowerBound(xMin);
+        xAxis.setUpperBound(xMax);
+        yAxis.setLowerBound(yMin);
+        yAxis.setUpperBound(yMax);
+    }
+
+    private ChartScale currentScale() {
+        NumberAxis x = (NumberAxis) getXAxis();
+        NumberAxis y = (NumberAxis) getYAxis();
+
+        return new ChartScale(
+                x.getLowerBound(), x.getUpperBound(),
+                y.getLowerBound(), y.getUpperBound()
+        );
+    }
+
+    private void applyScale(ChartScale scale) {
+        NumberAxis x = (NumberAxis) getXAxis();
+        NumberAxis y = (NumberAxis) getYAxis();
+
+        x.setAutoRanging(false);
+        y.setAutoRanging(false);
+
+        x.setLowerBound(scale.xMin());
+        x.setUpperBound(scale.xMax());
+        y.setLowerBound(scale.yMin());
+        y.setUpperBound(scale.yMax());
+    }
+
+    public boolean isZoomMode() {
+        return zoomMode;
+    }
+
+    private Point2D toPlotArea(MouseEvent e) {
+        return plotArea.sceneToLocal(e.getSceneX(), e.getSceneY());
+    }
+
+    private void saveBeforeScaleChange() {
+        backHistory.push(currentScale());
+        forwardHistory.clear(); // 💥 сбрасываем redo
     }
 
     // Геттер для отладки
