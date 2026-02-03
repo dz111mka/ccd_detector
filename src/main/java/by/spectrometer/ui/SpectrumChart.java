@@ -38,9 +38,10 @@ public class SpectrumChart extends LineChart<Number, Number> {
     // Флаг, показывающий, были ли найдены минимумы
     private boolean hasMinima = false;
 
-    // ───── Zoom state ─────
+    // Зум
     private boolean zoomMode = false;
-    private final Deque<ChartScale> scaleHistory = new ArrayDeque<>();
+    private final Deque<ChartScale> backHistory = new ArrayDeque<>();
+    private final Deque<ChartScale> forwardHistory = new ArrayDeque<>();
 
     private Rectangle zoomRect;
     private double dragStartX;
@@ -356,14 +357,25 @@ public class SpectrumChart extends LineChart<Number, Number> {
     }
 
     public boolean canZoomBack() {
-        return !scaleHistory.isEmpty();
+        return !backHistory.isEmpty();
     }
 
     public void zoomBack() {
-        if (scaleHistory.isEmpty()) return;
+        if (backHistory.isEmpty()) return;
 
-        ChartScale scale = scaleHistory.pop();
-        applyScale(scale);
+        forwardHistory.push(currentScale());
+        applyScale(backHistory.pop());
+    }
+
+    public boolean canZoomForward() {
+        return !forwardHistory.isEmpty();
+    }
+
+    public void zoomForward() {
+        if (forwardHistory.isEmpty()) return;
+
+        backHistory.push(currentScale());
+        applyScale(forwardHistory.pop());
     }
 
     private void initializeZoom() {
@@ -419,7 +431,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
         if (zoomRect.getWidth() < 10 || zoomRect.getHeight() < 10) return;
 
-        saveCurrentScale();
+        saveBeforeScaleChange();
         applyZoomFromRect();
     }
 
@@ -446,27 +458,27 @@ public class SpectrumChart extends LineChart<Number, Number> {
         yAxis.setUpperBound(yMax);
     }
 
-    private void saveCurrentScale() {
+    private ChartScale currentScale() {
         NumberAxis x = (NumberAxis) getXAxis();
         NumberAxis y = (NumberAxis) getYAxis();
 
-        scaleHistory.push(new ChartScale(
+        return new ChartScale(
                 x.getLowerBound(), x.getUpperBound(),
                 y.getLowerBound(), y.getUpperBound()
-        ));
+        );
     }
 
-    private void applyScale(ChartScale s) {
+    private void applyScale(ChartScale scale) {
         NumberAxis x = (NumberAxis) getXAxis();
         NumberAxis y = (NumberAxis) getYAxis();
 
         x.setAutoRanging(false);
         y.setAutoRanging(false);
 
-        x.setLowerBound(s.xMin());
-        x.setUpperBound(s.xMax());
-        y.setLowerBound(s.yMin());
-        y.setUpperBound(s.yMax());
+        x.setLowerBound(scale.xMin());
+        x.setUpperBound(scale.xMax());
+        y.setLowerBound(scale.yMin());
+        y.setUpperBound(scale.yMax());
     }
 
     public boolean isZoomMode() {
@@ -475,6 +487,11 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
     private Point2D toPlotArea(MouseEvent e) {
         return plotArea.sceneToLocal(e.getSceneX(), e.getSceneY());
+    }
+
+    private void saveBeforeScaleChange() {
+        backHistory.push(currentScale());
+        forwardHistory.clear(); // 💥 сбрасываем redo
     }
 
     // Геттер для отладки
