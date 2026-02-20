@@ -3,6 +3,7 @@ package by.spectrometer.controller;
 import by.spectrometer.model.ConnectionState;
 import by.spectrometer.model.ConnectionType;
 import by.spectrometer.model.SpectrumData;
+import by.spectrometer.model.Peak;
 import by.spectrometer.service.ConnectionService;
 import by.spectrometer.service.ExportService;
 import by.spectrometer.service.LogService;
@@ -65,6 +66,9 @@ public class SpectrometerController {
     private final Button btnCapture = new Button("Захватить");
     private final Button btnMinima = new Button("Минимумы");
     private final Button btnSmooth = new Button("Сгладить");
+    private final Button btnPeaks = new Button("Пики");
+    private final TextField tfPeakThreshold = new TextField("1000");
+    private final TextField tfPeakWindow = new TextField("50");
 
     // ────────────────────────────────────────────────────────────────
     // Контроллеры для Arduino
@@ -305,6 +309,7 @@ public class SpectrometerController {
         btnCapture.setOnAction(e -> toggleCaptureMode());
         btnSmooth.setOnAction(e -> applySmoothing());
         btnMinima.setOnAction(e -> findMinima());
+        btnPeaks.setOnAction(e -> detectPeaks());
         btnZoom.setOnAction(e ->
                 chart.setZoomMode(!chart.isZoomMode()
                 ));
@@ -346,7 +351,14 @@ public class SpectrometerController {
     }
 
     private HBox buildMeasurementControls() {
-        return new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnZoom, btnZoomBack, btnZoomForward);
+        HBox controls = new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks, btnZoom, btnZoomBack, btnZoomForward);
+        controls.getChildren().addAll(
+                new Label("Порог:"), tfPeakThreshold,
+                new Label("Окно:"), tfPeakWindow
+        );
+        tfPeakThreshold.setPrefWidth(80);
+        tfPeakWindow.setPrefWidth(80);
+        return controls;
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -446,6 +458,39 @@ public class SpectrometerController {
             return;
         }
         chart.smooth(Constants.SMOOTHING_WINDOW_SIZE);
+    }
+
+    private void detectPeaks() {
+        if (!validatePeakDetection()) return;
+        
+        try {
+            double threshold = Double.parseDouble(tfPeakThreshold.getText());
+            int window = Integer.parseInt(tfPeakWindow.getText());
+            
+            List<Peak> peaks = chart.detectPeaks(threshold, window);
+            LogService.log("Найдено пиков: " + peaks.size());
+            
+            for (Peak peak : peaks) {
+                LogService.log(String.format("Пик в пикселе %d: высота=%.2f, ширина=%.2f, площадь=%.2f",
+                        peak.getPixel(), peak.getHeight(), peak.getWidth(), peak.getArea()));
+            }
+        } catch (NumberFormatException e) {
+            LogService.log("Ошибка: порог и окно должны быть числами");
+        }
+    }
+
+    private boolean validatePeakDetection() {
+        if (!chart.isFrozen()) {
+            LogService.log("Детекция пиков доступна только в режиме Capture.");
+            return false;
+        }
+        
+        if (chart.getCapturedY() == null) {
+            LogService.log("Детекция пиков не возможна: нет захваченных данных.");
+            return false;
+        }
+        
+        return true;
     }
 
     private void findMinima() {

@@ -2,6 +2,9 @@ package by.spectrometer.ui;
 
 import by.spectrometer.model.ChartScale;
 import by.spectrometer.model.SpectrumData;
+import by.spectrometer.model.Peak;
+import by.spectrometer.service.PeakDetectionService;
+import by.spectrometer.service.PeakFittingService;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -29,7 +32,14 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
     private final Series<Number, Number> spectrumSeries = new Series<>();
     private final Series<Number, Number> minimaSeries = new Series<>();
+    private final Series<Number, Number> peaksSeries = new Series<>();
+    private final Series<Number, Number> baselineSeries = new Series<>();
     private final List<Integer> minima = new ArrayList<>();
+    private final List<Peak> peaks = new ArrayList<>();
+    private double[] baseline = null;
+    
+    private final PeakDetectionService peakDetectionService = new PeakDetectionService();
+    private final PeakFittingService peakFittingService = new PeakFittingService();
 
     private boolean showAbsorbance = false;
     private boolean frozen = false;
@@ -103,8 +113,16 @@ public class SpectrumChart extends LineChart<Number, Number> {
         // НО для серии минимумов нужно включить символы!
         getData().add(minimaSeries);
 
+        peaksSeries.setName("Peaks");
+        getData().add(peaksSeries);
+        
+        baselineSeries.setName("Baseline");
+        getData().add(baselineSeries);
+
         // Применяем стиль к серии минимумов
         applyMinimaSeriesStyle();
+        applyPeaksSeriesStyle();
+        applyBaselineSeriesStyle();
     }
 
     private void applyMinimaSeriesStyle() {
@@ -138,6 +156,39 @@ public class SpectrumChart extends LineChart<Number, Number> {
                 });
             }
         });
+    }
+
+    private void applyPeaksSeriesStyle() {
+        peaksSeries.getNode().setStyle("-fx-background-color: transparent;");
+
+        peaksSeries.nodeProperty().addListener((obs, oldNode, newNode) -> {
+            if (newNode != null) {
+                Platform.runLater(() -> {
+                    Node line = newNode.lookup(".chart-series-line");
+                    if (line != null) {
+                        line.setStyle("-fx-stroke: transparent;");
+                    }
+
+                    Set<Node> symbols = newNode.lookupAll(".chart-series-symbol");
+                    for (Node symbol : symbols) {
+                        symbol.setStyle("""
+                            -fx-background-color: green;
+                            -fx-background-radius: 5px;
+                            -fx-padding: 5px;
+                            -fx-border-color: white;
+                            -fx-border-width: 2px;
+                            -fx-border-radius: 5px;
+                            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
+                        """);
+                        symbol.setVisible(true);
+                    }
+                });
+            }
+        });
+    }
+
+    private void applyBaselineSeriesStyle() {
+        baselineSeries.getNode().setStyle("-fx-stroke: orange; -fx-stroke-width: 2px;");
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -529,6 +580,96 @@ public class SpectrumChart extends LineChart<Number, Number> {
     private void saveBeforeScaleChange() {
         backHistory.push(currentScale());
         forwardHistory.clear(); // 💥 сбрасываем redo
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Детекция пиков
+    // ────────────────────────────────────────────────────────────────
+    public List<Peak> detectPeaks(double threshold, int window) {
+        peaks.clear();
+        
+        if (!frozen || capturedY == null) {
+            System.err.println("The graph is not frozen or there is no captured data!");
+            return peaks;
+        }
+        
+        peakDetectionService.setPeakThreshold(threshold);
+        peakDetectionService.setPeakWindow(window);
+        
+        // Calculate baseline
+        baseline = peakDetectionService.calculateBaseline(capturedY);
+        
+        // Detect peaks
+        List<Peak> detectedPeaks = peakDetectionService.detectPeaks(capturedY, 0); // Using 0 baseline for now
+        peaks.addAll(detectedPeaks);
+        
+        // Draw baseline and peaks
+        drawBaseline();
+        drawPeakMarkers();
+        
+        return peaks;
+    }
+
+    private void drawBaseline() {
+        Platform.runLater(() -> {
+            baselineSeries.getData().clear();
+            
+            if (baseline == null) {
+                return;
+            }
+            
+            for (int i = 0; i < PIXEL_COUNT; i++) {
+                baselineSeries.getData().add(new Data<>(i, baseline[i]));
+            }
+        });
+    }
+
+    private void drawPeakMarkers() {
+        Platform.runLater(() -> {
+            peaksSeries.getData().clear();
+            
+            for (Peak peak : peaks) {
+                Data<Number, Number> point = new Data<>(peak.getPixel(), capturedY[peak.getPixel()]);
+                peaksSeries.getData().add(point);
+                
+                point.setExtraValue(new Object());
+                
+                point.nodeProperty().addListener((obs, oldNode, newNode) -> {
+                    if (newNode != null) {
+                        newNode.setStyle("""
+                            -fx-background-color: green;
+                            -fx-background-radius: 5px;
+                            -fx-padding: 5px;
+                            -fx-border-color: white;
+                            -fx-border-width: 2px;
+                            -fx-border-radius: 5px;
+                            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
+                        """);
+                        
+                        Tooltip tooltip = new Tooltip(String.format("Pixel: %d\nHeight: %.2f\nWidth: %.2f\nArea: %.2f",
+                                peak.getPixel(), peak.getHeight(), peak.getWidth(), peak.getArea()));
+                        Tooltip.install(newNode, tooltip);
+                    }
+                });
+            }
+        });
+    }
+
+    public void clearPeaks() {
+        Platform.runLater(() -> {
+            peaks.clear();
+            peaksSeries.getData().clear();
+            baseline = null;
+            baselineSeries.getData().clear();
+        });
+    }
+
+    public List<Peak> getPeaks() {
+        return peaks;
+    }
+
+    public double[] getBaseline() {
+        return baseline;
     }
 
     // Геттер для отладки
