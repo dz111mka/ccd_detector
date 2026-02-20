@@ -4,6 +4,7 @@ import by.spectrometer.model.ConnectionState;
 import by.spectrometer.model.ConnectionType;
 import by.spectrometer.model.SpectrumData;
 import by.spectrometer.service.ConnectionService;
+import by.spectrometer.service.ExportService;
 import by.spectrometer.service.LogService;
 import by.spectrometer.service.SerialConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
@@ -23,6 +24,9 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import com.fazecast.jSerialComm.SerialPort;
+import javafx.stage.FileChooser;
+
+import java.io.File;
 
 import java.util.Arrays;
 import java.util.DoubleSummaryStatistics;
@@ -43,6 +47,7 @@ public class SpectrometerController {
     private final VBox view = new VBox(15);
     private final SpectrumChart chart;
     private final ListView<String> logView = new ListView<>();
+    private final MenuBar menuBar;
 
     // Компоненты подключения спектрометра
     private final ComboBox<ConnectionType> cbConnectionType = new ComboBox<>();
@@ -84,6 +89,7 @@ public class SpectrometerController {
     // ────────────────────────────────────────────────────────────────
     public SpectrometerController() {
         chart = new SpectrumChart(data);
+        menuBar = createMenuBar();
         initializeUI();
         setupBindings();
         setupEventHandlers();
@@ -91,6 +97,111 @@ public class SpectrometerController {
         loadConfiguration();
         refreshPorts();
         setupArduinoControllers();
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Создание меню
+    // ────────────────────────────────────────────────────────────────
+    private MenuBar createMenuBar() {
+        MenuBar menuBar = new MenuBar();
+
+        // File menu
+        Menu fileMenu = new Menu("Файл");
+        
+        // Export submenu
+        Menu exportMenu = new Menu("Экспорт");
+        
+        MenuItem exportCSV = new MenuItem("CSV");
+        exportCSV.setOnAction(e -> exportData(ExportService.ExportFormat.CSV));
+        
+        MenuItem exportExcel = new MenuItem("Excel (XLSX)");
+        exportExcel.setOnAction(e -> exportData(ExportService.ExportFormat.EXCEL));
+        
+        MenuItem exportPDF = new MenuItem("PDF");
+        exportPDF.setOnAction(e -> exportData(ExportService.ExportFormat.PDF));
+        
+        exportMenu.getItems().addAll(exportCSV, exportExcel, exportPDF);
+        
+        // Exit menu item
+        MenuItem exitItem = new MenuItem("Выход");
+        exitItem.setOnAction(e -> System.exit(0));
+        
+        fileMenu.getItems().addAll(exportMenu, new SeparatorMenuItem(), exitItem);
+
+        // View menu
+        Menu viewMenu = new Menu("Вид");
+        
+        CheckMenuItem showGrid = new CheckMenuItem("Показать сетку");
+        showGrid.setSelected(true);
+        showGrid.setOnAction(e -> {
+            // TODO: Implement grid visibility toggle
+        });
+        
+        CheckMenuItem showLegend = new CheckMenuItem("Показать легенду");
+        showLegend.setSelected(true);
+        showLegend.setOnAction(e -> {
+            // TODO: Implement legend visibility toggle
+        });
+        
+        viewMenu.getItems().addAll(showGrid, showLegend);
+
+        // Help menu
+        Menu helpMenu = new Menu("Справка");
+        
+        MenuItem aboutItem = new MenuItem("О программе");
+        aboutItem.setOnAction(e -> {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("О программе");
+            alert.setHeaderText("DIY Спектрофотометр TCD1304");
+            alert.setContentText("Версия 0.0.1\n\nПрограмма для управления спектрофотометром на базе TCD1304.\nПоддерживает измерение и анализ спектральных данных в диапазоне 190–2050 нм.");
+            alert.showAndWait();
+        });
+        
+        helpMenu.getItems().add(aboutItem);
+
+        menuBar.getMenus().addAll(fileMenu, viewMenu, helpMenu);
+        return menuBar;
+    }
+
+    private void exportData(ExportService.ExportFormat format) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Экспорт данных");
+        
+        // Set extension filters
+        switch (format) {
+            case CSV:
+                fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+                fileChooser.setInitialFileName("spectrum_data.csv");
+                break;
+            case EXCEL:
+                fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
+                fileChooser.setInitialFileName("spectrum_data.xlsx");
+                break;
+            case PDF:
+                fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
+                fileChooser.setInitialFileName("spectrum_data.pdf");
+                break;
+        }
+        
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All Files", "*.*"));
+        
+        // Show save dialog
+        File selectedFile = fileChooser.showSaveDialog(view.getScene().getWindow());
+        
+        if (selectedFile != null) {
+            try {
+                double[] capturedY = chart.getCapturedY();
+                ExportService.exportData(data, capturedY, format, selectedFile);
+                LogService.log("Данные успешно экспортированы в: " + selectedFile.getAbsolutePath());
+            } catch (Exception ex) {
+                LogService.log("Ошибка при экспорте: " + ex.getMessage());
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Ошибка экспорта");
+                alert.setHeaderText("Не удалось экспортировать данные");
+                alert.setContentText(ex.getMessage());
+                alert.showAndWait();
+            }
+        }
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -208,6 +319,7 @@ public class SpectrometerController {
     // ────────────────────────────────────────────────────────────────
     private void buildLayout() {
         view.getChildren().addAll(
+                menuBar,
                 buildConnectionPanel(),
                 buildMeasurementControls(),
                 chart,

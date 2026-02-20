@@ -7,7 +7,7 @@ plugins {
 
 shadowJar {
     archiveBaseName = 'TCD1304-Spectrometer'
-    archiveVersion = '1.0.0'
+    archiveVersion = '0.0.1'
     archiveClassifier = 'full'
     manifest {
         attributes 'Main-Class': 'by.spectrometer.MainApp'
@@ -41,6 +41,12 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.1'
 
     implementation 'org.gillius:jfxutils:1.0'
+    
+    // Export dependencies
+    implementation 'com.opencsv:opencsv:5.12.0'
+    implementation 'org.apache.poi:poi:5.4.1'
+    implementation 'org.apache.poi:poi-ooxml:5.4.1'
+    implementation 'com.itextpdf:itextpdf:5.5.13.3'
 }
 
 java {
