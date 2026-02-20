@@ -378,6 +378,9 @@ public class SpectrumChart extends LineChart<Number, Number> {
         applyScale(forwardHistory.pop());
     }
 
+    // Tooltip для отображения координат при наведении
+    private final Tooltip coordinateTooltip = new Tooltip();
+
     private void initializeZoom() {
         zoomRect = new Rectangle();
         zoomRect.setManaged(false);
@@ -391,8 +394,42 @@ public class SpectrumChart extends LineChart<Number, Number> {
         setOnMousePressed(this::onZoomStart);
         setOnMouseDragged(this::onZoomDrag);
         setOnMouseReleased(this::onZoomEnd);
+        setOnMouseMoved(this::onMouseMove);
+        setOnMouseEntered(this::onMouseEnter);
+        setOnMouseExited(this::onMouseExit);
 
         Platform.runLater(() -> plotArea = lookup(".chart-plot-background"));
+    }
+
+    private void onMouseEnter(MouseEvent e) {
+        // Изменяем курсор на крестик при наведении на график
+        if (!zoomMode) {
+            setCursor(Cursor.CROSSHAIR);
+        }
+    }
+
+    private void onMouseExit(MouseEvent e) {
+        // Возвращаем обычный курсор при выходе из графика
+        if (!zoomMode) {
+            setCursor(Cursor.DEFAULT);
+        }
+        coordinateTooltip.hide();
+    }
+
+    private void onMouseMove(MouseEvent e) {
+        Point2D p = toPlotArea(e);
+        NumberAxis xAxis = (NumberAxis) getXAxis();
+        NumberAxis yAxis = (NumberAxis) getYAxis();
+
+        double xValue = xAxis.getValueForDisplay(p.getX()).doubleValue();
+        double yValue = yAxis.getValueForDisplay(p.getY()).doubleValue();
+
+        // Форматируем координаты для отображения
+        String tooltipText = String.format("X: %.2f\nY: %.2f", xValue, yValue);
+        coordinateTooltip.setText(tooltipText);
+
+        // Показываем tooltip рядом с курсором
+        coordinateTooltip.show(this, e.getScreenX() + 10, e.getScreenY() + 10);
     }
 
     private void onZoomStart(MouseEvent e) {
