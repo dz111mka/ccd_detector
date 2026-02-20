@@ -28,6 +28,9 @@ import javafx.stage.FileChooser;
 
 import java.io.File;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.Year;
 import java.util.Arrays;
 import java.util.DoubleSummaryStatistics;
 import java.util.List;
@@ -171,15 +174,15 @@ public class SpectrometerController {
         switch (format) {
             case CSV:
                 fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
-                fileChooser.setInitialFileName("spectrum_data.csv");
+                fileChooser.setInitialFileName(currentDate() + "spectrum_data.csv");
                 break;
             case EXCEL:
                 fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
-                fileChooser.setInitialFileName("spectrum_data.xlsx");
+                fileChooser.setInitialFileName(currentDate() + "spectrum_data.xlsx");
                 break;
             case PDF:
                 fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
-                fileChooser.setInitialFileName("spectrum_data.pdf");
+                fileChooser.setInitialFileName(currentDate() + "spectrum_data.pdf");
                 break;
         }
         
@@ -566,5 +569,10 @@ public class SpectrometerController {
 
     public VBox getView() {
         return view;
+    }
+
+    private String currentDate() {
+        LocalDateTime now = LocalDateTime.now();
+        return now.getYear() + "-" + now.getMonth().getValue() + "-" + now.getDayOfMonth() + " " + now.getHour() + ":" + now.getMinute() + ":" + now.getSecond() + " ";
     }
 }
