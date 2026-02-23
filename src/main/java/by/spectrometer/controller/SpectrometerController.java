@@ -11,7 +11,6 @@ import by.spectrometer.service.SerialConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
 import by.spectrometer.util.Constants;
-import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -29,9 +28,7 @@ import javafx.stage.FileChooser;
 
 import java.io.File;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.Year;
 import java.util.Arrays;
 import java.util.DoubleSummaryStatistics;
 import java.util.List;
@@ -48,7 +45,7 @@ public class SpectrometerController {
     // ────────────────────────────────────────────────────────────────
     // UI компоненты
     // ────────────────────────────────────────────────────────────────
-    private final VBox view = new VBox(15);
+    private final VBox view = new VBox();
     private final SpectrumChart chart;
     private final ListView<String> logView = new ListView<>();
     private final MenuBar menuBar;
@@ -326,8 +323,10 @@ public class SpectrometerController {
     // Построение layout
     // ────────────────────────────────────────────────────────────────
     private void buildLayout() {
-        view.getChildren().addAll(
-                menuBar,
+        VBox mainContent = new VBox(15);
+        mainContent.setPadding(new Insets(20));
+        mainContent.setStyle("-fx-background-color: #f4f4f4;");
+        mainContent.getChildren().addAll(
                 buildConnectionPanel(),
                 buildMeasurementControls(),
                 chart,
@@ -335,6 +334,11 @@ public class SpectrometerController {
                 logView,
                 arduinoConnectionController.getView(),
                 stepperMotorController.getView()
+        );
+        
+        view.getChildren().addAll(
+                menuBar,
+                mainContent
         );
     }
 

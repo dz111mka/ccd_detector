@@ -442,27 +442,31 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
         getPlotChildren().add(zoomRect);
 
-        setOnMousePressed(this::onZoomStart);
-        setOnMouseDragged(this::onZoomDrag);
-        setOnMouseReleased(this::onZoomEnd);
-        setOnMouseMoved(this::onMouseMove);
-        setOnMouseEntered(this::onMouseEnter);
-        setOnMouseExited(this::onMouseExit);
-
-        Platform.runLater(() -> plotArea = lookup(".chart-plot-background"));
+        Platform.runLater(() -> {
+            plotArea = lookup(".chart-plot-background");
+            if (plotArea != null) {
+                // Set all mouse event handlers only on the plot area
+                plotArea.setOnMousePressed(this::onZoomStart);
+                plotArea.setOnMouseDragged(this::onZoomDrag);
+                plotArea.setOnMouseReleased(this::onZoomEnd);
+                plotArea.setOnMouseMoved(this::onMouseMove);
+                plotArea.setOnMouseEntered(this::onMouseEnter);
+                plotArea.setOnMouseExited(this::onMouseExit);
+            }
+        });
     }
 
     private void onMouseEnter(MouseEvent e) {
         // Изменяем курсор на крестик при наведении на график
         if (!zoomMode) {
-            setCursor(Cursor.CROSSHAIR);
+            plotArea.setCursor(Cursor.CROSSHAIR);
         }
     }
 
     private void onMouseExit(MouseEvent e) {
         // Возвращаем обычный курсор при выходе из графика
         if (!zoomMode) {
-            setCursor(Cursor.DEFAULT);
+            plotArea.setCursor(Cursor.DEFAULT);
         }
         coordinateTooltip.hide();
     }
