@@ -5,6 +5,12 @@ plugins {
     id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
+compileJava.options.encoding = 'UTF-8'
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
 shadowJar {
     archiveBaseName = 'TCD1304-Spectrometer'
     archiveVersion = '0.0.1'
