@@ -267,7 +267,7 @@ public class SpectrometerController {
 
     private void applyTheme() {
         // Обновляем иконку кнопки
-        btnThemeToggle.setText(isDarkTheme ? "☀️" : "🌙");
+        btnThemeToggle.setText(isDarkTheme ? "☀" : "☽");
         
         // Цвета для текущей темы
         String bgColor, panelBg, textColor, borderColor, buttonBg, buttonHover;
