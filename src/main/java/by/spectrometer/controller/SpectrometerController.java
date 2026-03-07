@@ -23,6 +23,8 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.Node;
+import javafx.scene.Parent;
 import com.fazecast.jSerialComm.SerialPort;
 import javafx.stage.FileChooser;
 
@@ -87,6 +89,10 @@ public class SpectrometerController {
     private final Button btnZoomBack = new Button("↶");
     private final Button btnZoomForward = new Button("↷");
 
+    // Кнопка переключения темы
+    private final Button btnThemeToggle = new Button("🌙");
+    private boolean isDarkTheme = false;
+
 
     // ────────────────────────────────────────────────────────────────
     // Конструктор
@@ -101,6 +107,7 @@ public class SpectrometerController {
         loadConfiguration();
         refreshPorts();
         setupArduinoControllers();
+        loadThemeConfiguration();
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -132,7 +139,7 @@ public class SpectrometerController {
         
         fileMenu.getItems().addAll(exportMenu, new SeparatorMenuItem(), exitItem);
 
-        // View menu
+     // View menu
         Menu viewMenu = new Menu("Вид");
         
         CheckMenuItem showGrid = new CheckMenuItem("Показать сетку");
@@ -147,7 +154,10 @@ public class SpectrometerController {
             // TODO: Implement legend visibility toggle
         });
         
-        viewMenu.getItems().addAll(showGrid, showLegend);
+        CheckMenuItem darkTheme = new CheckMenuItem("Тёмная тема");
+        darkTheme.setOnAction(e -> toggleTheme());
+        
+        viewMenu.getItems().addAll(showGrid, showLegend, darkTheme);
 
         // Help menu
         Menu helpMenu = new Menu("Справка");
@@ -246,7 +256,102 @@ public class SpectrometerController {
 
     private void configureVisualStyles() {
         view.setPadding(new Insets(20));
-        view.setStyle("-fx-background-color: #f4f4f4;");
+        applyTheme();
+    }
+
+    private void toggleTheme() {
+        isDarkTheme = !isDarkTheme;
+        applyTheme();
+        saveThemeConfiguration();
+    }
+
+    private void applyTheme() {
+        // Обновляем иконку кнопки
+        btnThemeToggle.setText(isDarkTheme ? "☀️" : "🌙");
+        
+        // Цвета для текущей темы
+        String bgColor, panelBg, textColor, borderColor, buttonBg, buttonHover;
+        
+        if (isDarkTheme) {
+            bgColor = Constants.DarkTheme.BACKGROUND;
+            panelBg = Constants.DarkTheme.PANEL_BACKGROUND;
+            textColor = Constants.DarkTheme.TEXT_COLOR;
+            borderColor = Constants.DarkTheme.BORDER_COLOR;
+            buttonBg = Constants.DarkTheme.BUTTON_BACKGROUND;
+            buttonHover = Constants.DarkTheme.BUTTON_HOVER;
+        } else {
+            bgColor = Constants.LightTheme.BACKGROUND;
+            panelBg = Constants.LightTheme.PANEL_BACKGROUND;
+            textColor = Constants.LightTheme.TEXT_COLOR;
+            borderColor = Constants.LightTheme.BORDER_COLOR;
+            buttonBg = Constants.LightTheme.BUTTON_BACKGROUND;
+            buttonHover = Constants.LightTheme.BUTTON_HOVER;
+        }
+        
+        // Применяем стили к основным контейнерам
+        view.setStyle("-fx-background-color: " + bgColor + ";");
+        
+        // Применяем стили к меню
+        menuBar.setStyle("-fx-background-color: " + panelBg + "; " +
+                "-fx-text-fill: " + textColor + ";");
+        
+        // Применяем стили к контроллерам
+        applyStylesToAllChildren(view, panelBg, textColor, buttonBg, borderColor);
+        
+        // Обновляем график
+        chart.applyTheme(isDarkTheme);
+    }
+
+    private void applyStylesToAllChildren(Node node, String bgColor, String textColor, String buttonColor, String borderColor) {
+        if (node instanceof Control) {
+            Control control = (Control) node;
+            
+            if (node instanceof Button) {
+                control.setStyle("-fx-background-color: " + buttonColor + "; " +
+                        "-fx-text-fill: " + textColor + "; " +
+                        "-fx-border-color: " + borderColor + "; " +
+                        "-fx-border-width: 1px; " +
+                        "-fx-border-radius: 4px;");
+            } else if (node instanceof TextField) {
+                control.setStyle("-fx-background-color: " + bgColor + "; " +
+                        "-fx-text-fill: " + textColor + "; " +
+                        "-fx-prompt-text-fill: " + (isDarkTheme ? "#888888" : "#999999") + "; " +
+                        "-fx-border-color: " + borderColor + "; " +
+                        "-fx-border-width: 1px; " +
+                        "-fx-border-radius: 4px;");
+            } else if (node instanceof ComboBox) {
+                control.setStyle("-fx-background-color: " + buttonColor + "; " +
+                        "-fx-text-fill: " + textColor + "; " +
+                        "-fx-border-color: " + borderColor + "; " +
+                        "-fx-border-width: 1px; " +
+                        "-fx-border-radius: 4px;");
+            } else if (node instanceof Label) {
+                control.setStyle("-fx-text-fill: " + textColor + ";");
+            } else if (node instanceof ListView) {
+                control.setStyle("-fx-background-color: " + bgColor + "; " +
+                        "-fx-text-fill: " + textColor + "; " +
+                        "-fx-border-color: " + borderColor + "; " +
+                        "-fx-border-width: 1px; " +
+                        "-fx-border-radius: 4px;");
+            }
+        }
+        
+        if (node instanceof Parent) {
+            for (Node child : ((Parent) node).getChildrenUnmodifiable()) {
+                applyStylesToAllChildren(child, bgColor, textColor, buttonColor, borderColor);
+            }
+        }
+    }
+
+    private void loadThemeConfiguration() {
+        Preferences prefs = Preferences.userNodeForPackage(getClass());
+        isDarkTheme = prefs.getBoolean("darkTheme", false);
+        applyTheme();
+    }
+
+    private void saveThemeConfiguration() {
+        Preferences prefs = Preferences.userNodeForPackage(getClass());
+        prefs.putBoolean("darkTheme", isDarkTheme);
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -293,6 +398,11 @@ public class SpectrometerController {
         setupConnectionEventHandlers();
         setupMeasurementEventHandlers();
         setupLogEventHandlers();
+        setupThemeEventHandlers();
+    }
+
+    private void setupThemeEventHandlers() {
+        btnThemeToggle.setOnAction(e -> toggleTheme());
     }
 
     private void setupConnectionEventHandlers() {
@@ -325,7 +435,6 @@ public class SpectrometerController {
     private void buildLayout() {
         VBox mainContent = new VBox(15);
         mainContent.setPadding(new Insets(20));
-        mainContent.setStyle("-fx-background-color: #f4f4f4;");
         mainContent.getChildren().addAll(
                 buildConnectionPanel(),
                 buildMeasurementControls(),
@@ -355,13 +464,18 @@ public class SpectrometerController {
     }
 
     private HBox buildMeasurementControls() {
-        HBox controls = new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks, btnZoom, btnZoomBack, btnZoomForward);
+        HBox controls = new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks, btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle);
         controls.getChildren().addAll(
                 new Label("Порог:"), tfPeakThreshold,
                 new Label("Окно:"), tfPeakWindow
         );
         tfPeakThreshold.setPrefWidth(80);
         tfPeakWindow.setPrefWidth(80);
+        
+        // Настройка кнопки переключения темы
+        btnThemeToggle.setStyle("-fx-background-radius: 50%; -fx-min-width: 30; -fx-min-height: 30; -fx-max-width: 30; -fx-max-height: 30;");
+        btnThemeToggle.setOnAction(e -> toggleTheme());
+        
         return controls;
     }
 

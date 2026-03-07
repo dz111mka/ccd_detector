@@ -5,6 +5,7 @@ import by.spectrometer.model.SpectrumData;
 import by.spectrometer.model.Peak;
 import by.spectrometer.service.PeakDetectionService;
 import by.spectrometer.service.PeakFittingService;
+import by.spectrometer.util.Constants;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -676,7 +677,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
         return baseline;
     }
 
-    // Геттер для отладки
+     // Геттер для отладки
     public double[] getCapturedY() {
         return capturedY;
     }
@@ -684,5 +685,120 @@ public class SpectrumChart extends LineChart<Number, Number> {
     // Для отладки
     public int getMinimaCount() {
         return minima.size();
+    }
+
+    // Применение темы к графику
+    public void applyTheme(boolean isDarkTheme) {
+        String bgColor, gridColor, axisColor, spectrumLineColor;
+        
+        if (isDarkTheme) {
+            bgColor = Constants.DarkTheme.CHART_BACKGROUND;
+            gridColor = Constants.DarkTheme.CHART_GRID;
+            axisColor = Constants.DarkTheme.CHART_AXIS;
+            spectrumLineColor = Constants.DarkTheme.SPECTRUM_LINE;
+        } else {
+            bgColor = Constants.LightTheme.CHART_BACKGROUND;
+            gridColor = Constants.LightTheme.CHART_GRID;
+            axisColor = Constants.LightTheme.CHART_AXIS;
+            spectrumLineColor = Constants.LightTheme.SPECTRUM_LINE;
+        }
+        
+        // Применяем стили к графику
+        setStyle("-fx-background-color: " + bgColor + ";");
+        
+        // Применяем стили к осям и сетке
+        NumberAxis xAxis = (NumberAxis) getXAxis();
+        NumberAxis yAxis = (NumberAxis) getYAxis();
+        
+        xAxis.setStyle("-fx-tick-label-fill: " + axisColor + "; " +
+                "-fx-label-fill: " + axisColor + "; " +
+                "-fx-axis-line-color: " + axisColor + "; " +
+                "-fx-tick-mark-color: " + axisColor + ";");
+        
+        yAxis.setStyle("-fx-tick-label-fill: " + axisColor + "; " +
+                "-fx-label-fill: " + axisColor + "; " +
+                "-fx-axis-line-color: " + axisColor + "; " +
+                "-fx-tick-mark-color: " + axisColor + ";");
+        
+        // Применяем стиль к фону графика
+        Platform.runLater(() -> {
+            Node plotBackground = lookup(".chart-plot-background");
+            if (plotBackground != null) {
+                plotBackground.setStyle("-fx-background-color: " + bgColor + ";");
+            }
+            
+            Node grid = lookup(".chart-grid-lines");
+            if (grid != null) {
+                grid.setStyle("-fx-stroke: " + gridColor + ";");
+            }
+            
+            // Применяем стиль к серии спектра
+            Node spectrumLine = spectrumSeries.getNode().lookup(".chart-series-line");
+            if (spectrumLine != null) {
+                spectrumLine.setStyle("-fx-stroke: " + spectrumLineColor + "; -fx-stroke-width: 1.5px;");
+            }
+            
+            // Обновляем стили для серий минимумов и пиков
+            updateMinimaSeriesStyle(isDarkTheme);
+            updatePeaksSeriesStyle(isDarkTheme);
+            updateBaselineSeriesStyle(isDarkTheme);
+        });
+    }
+
+    private void updateMinimaSeriesStyle(boolean isDarkTheme) {
+        minimaSeries.nodeProperty().addListener((obs, oldNode, newNode) -> {
+            if (newNode != null) {
+                Platform.runLater(() -> {
+                    Node line = newNode.lookup(".chart-series-line");
+                    if (line != null) {
+                        line.setStyle("-fx-stroke: transparent;");
+                    }
+                    
+                    Set<Node> symbols = newNode.lookupAll(".chart-series-symbol");
+                    for (Node symbol : symbols) {
+                        String borderColor = isDarkTheme ? "#333333" : "white";
+                        symbol.setStyle("-fx-background-color: red; " +
+                                "-fx-background-radius: 5px; " +
+                                "-fx-padding: 5px; " +
+                                "-fx-border-color: " + borderColor + "; " +
+                                "-fx-border-width: 2px; " +
+                                "-fx-border-radius: 5px; " +
+                                "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);");
+                        symbol.setVisible(true);
+                    }
+                });
+            }
+        });
+    }
+
+    private void updatePeaksSeriesStyle(boolean isDarkTheme) {
+        peaksSeries.nodeProperty().addListener((obs, oldNode, newNode) -> {
+            if (newNode != null) {
+                Platform.runLater(() -> {
+                    Node line = newNode.lookup(".chart-series-line");
+                    if (line != null) {
+                        line.setStyle("-fx-stroke: transparent;");
+                    }
+                    
+                    Set<Node> symbols = newNode.lookupAll(".chart-series-symbol");
+                    for (Node symbol : symbols) {
+                        String borderColor = isDarkTheme ? "#333333" : "white";
+                        symbol.setStyle("-fx-background-color: green; " +
+                                "-fx-background-radius: 5px; " +
+                                "-fx-padding: 5px; " +
+                                "-fx-border-color: " + borderColor + "; " +
+                                "-fx-border-width: 2px; " +
+                                "-fx-border-radius: 5px; " +
+                                "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);");
+                        symbol.setVisible(true);
+                    }
+                });
+            }
+        });
+    }
+
+    private void updateBaselineSeriesStyle(boolean isDarkTheme) {
+        String baselineColor = isDarkTheme ? "#ff9800" : "orange";
+        baselineSeries.getNode().setStyle("-fx-stroke: " + baselineColor + "; -fx-stroke-width: 2px;");
     }
 }
