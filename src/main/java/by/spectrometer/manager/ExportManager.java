@@ -29,15 +29,15 @@ public class ExportManager {
         switch (format) {
             case CSV:
                 fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
-                fileChooser.setInitialFileName(currentDate() + "spectrum_data.csv");
+                fileChooser.setInitialFileName(currentDate() + ".csv");
                 break;
             case EXCEL:
                 fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
-                fileChooser.setInitialFileName(currentDate() + "spectrum_data.xlsx");
+                fileChooser.setInitialFileName(currentDate() + ".xlsx");
                 break;
             case PDF:
                 fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
-                fileChooser.setInitialFileName(currentDate() + "spectrum_data.pdf");
+                fileChooser.setInitialFileName(currentDate() + ".pdf");
                 break;
         }
 
@@ -64,6 +64,6 @@ public class ExportManager {
 
     private String currentDate() {
         LocalDateTime now = LocalDateTime.now();
-        return now.getYear() + "-" + now.getMonth().getValue() + "-" + now.getDayOfMonth() + " " + now.getHour() + ":" + now.getMinute() + ":" + now.getSecond() + " ";
+        return now.getYear() + "-" + now.getMonth().getValue() + "-" + now.getDayOfMonth() + "T" + now.getHour() + "-" + now.getMinute() + "-" + now.getSecond() + " ";
     }
 }
