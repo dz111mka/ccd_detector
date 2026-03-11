@@ -96,8 +96,8 @@ public class ConnectionManager {
 
     private ConnectionService createConnectionService() {
         return switch (currentConnectionType) {
-            case SERIAL -> new SerialConnectionService(data, connState, () -> controller.updateChart());
-            case WEBSOCKET -> new WebSocketConnectionService(data, connState, () -> controller.updateChart());
+            case SERIAL -> new SerialConnectionService(data, connState, controller::updateChart);
+            case WEBSOCKET -> new WebSocketConnectionService(data, connState, controller::updateChart);
         };
     }
 

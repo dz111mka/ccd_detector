@@ -1,11 +1,13 @@
 package by.spectrometer.controller;
 
 import by.spectrometer.manager.*;
-import by.spectrometer.model.*;
-import by.spectrometer.ui.SpectrumChart;
-import by.spectrometer.ui.builder.SpectrometerUIBuilder;
+import by.spectrometer.model.ConnectionState;
+import by.spectrometer.model.ConnectionType;
+import by.spectrometer.model.SpectrumData;
 import by.spectrometer.service.ExportService;
 import by.spectrometer.service.LogService;
+import by.spectrometer.ui.SpectrumChart;
+import by.spectrometer.ui.builder.SpectrometerUIBuilder;
 import by.spectrometer.util.Constants;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
@@ -16,20 +18,7 @@ import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
-import javafx.scene.Node;
-import javafx.scene.Parent;
-import com.fazecast.jSerialComm.SerialPort;
-import javafx.stage.FileChooser;
-
-import java.io.File;
-
-import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.DoubleSummaryStatistics;
-import java.util.List;
-import java.util.prefs.Preferences;
 
 public class SpectrometerController {
 
