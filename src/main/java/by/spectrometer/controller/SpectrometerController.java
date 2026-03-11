@@ -243,15 +243,22 @@ public class SpectrometerController {
     private void initializeMeasurementUI() {
         chart.setAnimated(false);
         chart.setCreateSymbols(false);
+        chart.setMaxHeight(600);
+        chart.setPrefHeight(600);
+        chart.setPrefWidth(2000);
+        chart.setMaxWidth(2000);
     }
 
     private void initializeLogView() {
         logView.setItems(LogService.getLogs());
-        logView.setPrefHeight(180);
+        logView.setPrefHeight(200); // Уменьшаем ещё больше высоту лог-вида
+        logView.setMaxHeight(200);
         logView.setStyle("""
             -fx-font-family: Consolas;
             -fx-font-size: 12;
         """);
+        logView.setPrefWidth(2000);
+        logView.setMaxWidth(2000);
     }
 
     private void configureVisualStyles() {

@@ -219,10 +219,10 @@ public class SpectrumChart extends LineChart<Number, Number> {
             // Подгонка Y-оси
             double maxY = newPoints.stream()
                     .mapToDouble(p -> p.getYValue().doubleValue())
-                    .max().orElse(4096.0);
+                    .max().orElse(40960.0);
 
             NumberAxis yAxis = (NumberAxis) getYAxis();
-            yAxis.setUpperBound(Math.max(4096, maxY * 1.1));
+            yAxis.setUpperBound(Math.max(40960, maxY * 1.1));
             yAxis.setLowerBound(0);
         });
     }
@@ -238,7 +238,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
         } else {
             rawValue = data.raw[idx];
         }
-        return 4095 - rawValue;
+        return (4095 - rawValue) * 10; // Увеличиваем шкалу по Y в 10 раз для лучшей видимости шумов
     }
 
     public void setShowAbsorbance(boolean show) {
