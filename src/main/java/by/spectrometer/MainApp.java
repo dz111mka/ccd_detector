@@ -10,10 +10,11 @@ public class MainApp extends Application {
     @Override
     public void start(Stage stage) {
         SpectrometerController controller = new SpectrometerController();
-        Scene scene = new Scene(controller.getView(), 1200, 750);
+        Scene scene = new Scene(controller.getView());
 
         stage.setScene(scene);
         stage.setTitle("DIY Спектрофотометр TCD1304 • 190–2050 нм");
+        stage.setMaximized(true); // Запуск приложения в максимальном размере окна
         stage.show();
     }
 

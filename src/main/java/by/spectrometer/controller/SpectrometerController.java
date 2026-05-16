@@ -1,40 +1,24 @@
 package by.spectrometer.controller;
 
+import by.spectrometer.manager.*;
 import by.spectrometer.model.ConnectionState;
 import by.spectrometer.model.ConnectionType;
 import by.spectrometer.model.SpectrumData;
-import by.spectrometer.model.Peak;
-import by.spectrometer.service.ConnectionService;
 import by.spectrometer.service.ExportService;
 import by.spectrometer.service.LogService;
-import by.spectrometer.service.SerialConnectionService;
-import by.spectrometer.service.WebSocketConnectionService;
 import by.spectrometer.ui.SpectrumChart;
+import by.spectrometer.ui.builder.SpectrometerUIBuilder;
 import by.spectrometer.util.Constants;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
-import javafx.scene.Node;
-import javafx.scene.Parent;
-import com.fazecast.jSerialComm.SerialPort;
-import javafx.stage.FileChooser;
-
-import java.io.File;
-
-import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.DoubleSummaryStatistics;
-import java.util.List;
-import java.util.prefs.Preferences;
 
 public class SpectrometerController {
 
@@ -47,7 +31,7 @@ public class SpectrometerController {
     // ────────────────────────────────────────────────────────────────
     // UI компоненты
     // ────────────────────────────────────────────────────────────────
-    private final VBox view = new VBox();
+    private final VBox view;
     private final SpectrumChart chart;
     private final ListView<String> logView = new ListView<>();
     private final MenuBar menuBar;
@@ -76,22 +60,27 @@ public class SpectrometerController {
     private final StepperMotorController stepperMotorController = new StepperMotorController();
 
     // ────────────────────────────────────────────────────────────────
-    // Внутреннее состояние
+    // Менеджеры (новые классы для разделения ответственности)
     // ────────────────────────────────────────────────────────────────
-    private ConnectionService connectionService;
-    private ConnectionType currentConnectionType = ConnectionType.SERIAL;
-    private long lastRedraw = 0;
+    private final SpectrometerUIBuilder uiBuilder;
+    private final ConnectionManager connectionManager;
+    private final MeasurementManager measurementManager;
+    private final ThemeManager themeManager;
+    private final ConfigurationManager configManager;
+    private final ExportManager exportManager;
 
     // ────────────────────────────────────────────────────────────────
-    // Кнопки масштаба
+    // Внутреннее состояние
     // ────────────────────────────────────────────────────────────────
+    private long lastRedraw = 0;
+
+    // Кнопки масштаба
     private final Button btnZoom = new Button("🔍");
     private final Button btnZoomBack = new Button("↶");
     private final Button btnZoomForward = new Button("↷");
 
     // Кнопка переключения темы
     private final Button btnThemeToggle = new Button("🌙");
-    private boolean isDarkTheme = false;
 
 
     // ────────────────────────────────────────────────────────────────
@@ -99,11 +88,21 @@ public class SpectrometerController {
     // ────────────────────────────────────────────────────────────────
     public SpectrometerController() {
         chart = new SpectrumChart(data);
-        menuBar = createMenuBar();
+        uiBuilder = new SpectrometerUIBuilder(this);
+        menuBar = uiBuilder.createMenuBar();
+        connectionManager = new ConnectionManager(this, data, connState);
+        measurementManager = new MeasurementManager(this, chart);
+        configManager = new ConfigurationManager(getClass());
+        exportManager = new ExportManager(data, chart);
+        view = uiBuilder.buildMainLayout(menuBar,
+                uiBuilder.buildConnectionPanel(cbConnectionType, tfAddress, cbSerialPorts, btnConnect, lblStatus),
+                uiBuilder.buildMeasurementControls(btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks,
+                        btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle, tfPeakThreshold, tfPeakWindow),
+                chart, logView, arduinoConnectionController, stepperMotorController);
+        themeManager = new ThemeManager(this, view, menuBar);
         initializeUI();
         setupBindings();
         setupEventHandlers();
-        buildLayout();
         loadConfiguration();
         refreshPorts();
         setupArduinoControllers();
@@ -111,111 +110,23 @@ public class SpectrometerController {
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Создание меню
+    // Публичные методы для доступа из других классов
     // ────────────────────────────────────────────────────────────────
-    private MenuBar createMenuBar() {
-        MenuBar menuBar = new MenuBar();
-
-        // File menu
-        Menu fileMenu = new Menu("Файл");
-        
-        // Export submenu
-        Menu exportMenu = new Menu("Экспорт");
-        
-        MenuItem exportCSV = new MenuItem("CSV");
-        exportCSV.setOnAction(e -> exportData(ExportService.ExportFormat.CSV));
-        
-        MenuItem exportExcel = new MenuItem("Excel (XLSX)");
-        exportExcel.setOnAction(e -> exportData(ExportService.ExportFormat.EXCEL));
-        
-        MenuItem exportPDF = new MenuItem("PDF");
-        exportPDF.setOnAction(e -> exportData(ExportService.ExportFormat.PDF));
-        
-        exportMenu.getItems().addAll(exportCSV, exportExcel, exportPDF);
-        
-        // Exit menu item
-        MenuItem exitItem = new MenuItem("Выход");
-        exitItem.setOnAction(e -> System.exit(0));
-        
-        fileMenu.getItems().addAll(exportMenu, new SeparatorMenuItem(), exitItem);
-
-     // View menu
-        Menu viewMenu = new Menu("Вид");
-        
-        CheckMenuItem showGrid = new CheckMenuItem("Показать сетку");
-        showGrid.setSelected(true);
-        showGrid.setOnAction(e -> {
-            // TODO: Implement grid visibility toggle
-        });
-        
-        CheckMenuItem showLegend = new CheckMenuItem("Показать легенду");
-        showLegend.setSelected(true);
-        showLegend.setOnAction(e -> {
-            // TODO: Implement legend visibility toggle
-        });
-        
-        CheckMenuItem darkTheme = new CheckMenuItem("Тёмная тема");
-        darkTheme.setOnAction(e -> toggleTheme());
-        
-        viewMenu.getItems().addAll(showGrid, showLegend, darkTheme);
-
-        // Help menu
-        Menu helpMenu = new Menu("Справка");
-        
-        MenuItem aboutItem = new MenuItem("О программе");
-        aboutItem.setOnAction(e -> {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            alert.setTitle("О программе");
-            alert.setHeaderText("DIY Спектрофотометр TCD1304");
-            alert.setContentText("Версия 0.0.1\n\nПрограмма для управления спектрофотометром на базе TCD1304.\nПоддерживает измерение и анализ спектральных данных в диапазоне 190–2050 нм.");
-            alert.showAndWait();
-        });
-        
-        helpMenu.getItems().add(aboutItem);
-
-        menuBar.getMenus().addAll(fileMenu, viewMenu, helpMenu);
-        return menuBar;
+    public SpectrumData getData() {
+        return data;
     }
 
-    private void exportData(ExportService.ExportFormat format) {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Экспорт данных");
-        
-        // Set extension filters
-        switch (format) {
-            case CSV:
-                fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
-                fileChooser.setInitialFileName(currentDate() + "spectrum_data.csv");
-                break;
-            case EXCEL:
-                fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
-                fileChooser.setInitialFileName(currentDate() + "spectrum_data.xlsx");
-                break;
-            case PDF:
-                fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
-                fileChooser.setInitialFileName(currentDate() + "spectrum_data.pdf");
-                break;
-        }
-        
-        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All Files", "*.*"));
-        
-        // Show save dialog
-        File selectedFile = fileChooser.showSaveDialog(view.getScene().getWindow());
-        
-        if (selectedFile != null) {
-            try {
-                double[] capturedY = chart.getCapturedY();
-                ExportService.exportData(data, capturedY, format, selectedFile);
-                LogService.log("Данные успешно экспортированы в: " + selectedFile.getAbsolutePath());
-            } catch (Exception ex) {
-                LogService.log("Ошибка при экспорте: " + ex.getMessage());
-                Alert alert = new Alert(Alert.AlertType.ERROR);
-                alert.setTitle("Ошибка экспорта");
-                alert.setHeaderText("Не удалось экспортировать данные");
-                alert.setContentText(ex.getMessage());
-                alert.showAndWait();
-            }
-        }
+    public SpectrumChart getChart() {
+        return chart;
+    }
+
+    public void exportData(ExportService.ExportFormat format) {
+        exportManager.exportData(format, view.getScene().getWindow());
+    }
+
+    public void toggleTheme() {
+        themeManager.toggleTheme();
+        btnThemeToggle.setText(themeManager.isDarkTheme() ? "☀" : "☽");
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -243,15 +154,22 @@ public class SpectrometerController {
     private void initializeMeasurementUI() {
         chart.setAnimated(false);
         chart.setCreateSymbols(false);
+        chart.setMaxHeight(600);
+        chart.setPrefHeight(600);
+        chart.setPrefWidth(2000);
+        chart.setMaxWidth(2000);
     }
 
     private void initializeLogView() {
         logView.setItems(LogService.getLogs());
-        logView.setPrefHeight(180);
+        logView.setPrefHeight(200);
+        logView.setMaxHeight(200);
         logView.setStyle("""
             -fx-font-family: Consolas;
             -fx-font-size: 12;
         """);
+        logView.setPrefWidth(2000);
+        logView.setMaxWidth(2000);
     }
 
     private void configureVisualStyles() {
@@ -259,99 +177,9 @@ public class SpectrometerController {
         applyTheme();
     }
 
-    private void toggleTheme() {
-        isDarkTheme = !isDarkTheme;
-        applyTheme();
-        saveThemeConfiguration();
-    }
-
     private void applyTheme() {
-        // Обновляем иконку кнопки
-        btnThemeToggle.setText(isDarkTheme ? "☀" : "☽");
-        
-        // Цвета для текущей темы
-        String bgColor, panelBg, textColor, borderColor, buttonBg, buttonHover;
-        
-        if (isDarkTheme) {
-            bgColor = Constants.DarkTheme.BACKGROUND;
-            panelBg = Constants.DarkTheme.PANEL_BACKGROUND;
-            textColor = Constants.DarkTheme.TEXT_COLOR;
-            borderColor = Constants.DarkTheme.BORDER_COLOR;
-            buttonBg = Constants.DarkTheme.BUTTON_BACKGROUND;
-            buttonHover = Constants.DarkTheme.BUTTON_HOVER;
-        } else {
-            bgColor = Constants.LightTheme.BACKGROUND;
-            panelBg = Constants.LightTheme.PANEL_BACKGROUND;
-            textColor = Constants.LightTheme.TEXT_COLOR;
-            borderColor = Constants.LightTheme.BORDER_COLOR;
-            buttonBg = Constants.LightTheme.BUTTON_BACKGROUND;
-            buttonHover = Constants.LightTheme.BUTTON_HOVER;
-        }
-        
-        // Применяем стили к основным контейнерам
-        view.setStyle("-fx-background-color: " + bgColor + ";");
-        
-        // Применяем стили к меню
-        menuBar.setStyle("-fx-background-color: " + panelBg + "; " +
-                "-fx-text-fill: " + textColor + ";");
-        
-        // Применяем стили к контроллерам
-        applyStylesToAllChildren(view, panelBg, textColor, buttonBg, borderColor);
-        
-        // Обновляем график
-        chart.applyTheme(isDarkTheme);
-    }
-
-    private void applyStylesToAllChildren(Node node, String bgColor, String textColor, String buttonColor, String borderColor) {
-        if (node instanceof Control) {
-            Control control = (Control) node;
-            
-            if (node instanceof Button) {
-                control.setStyle("-fx-background-color: " + buttonColor + "; " +
-                        "-fx-text-fill: " + textColor + "; " +
-                        "-fx-border-color: " + borderColor + "; " +
-                        "-fx-border-width: 1px; " +
-                        "-fx-border-radius: 4px;");
-            } else if (node instanceof TextField) {
-                control.setStyle("-fx-background-color: " + bgColor + "; " +
-                        "-fx-text-fill: " + textColor + "; " +
-                        "-fx-prompt-text-fill: " + (isDarkTheme ? "#888888" : "#999999") + "; " +
-                        "-fx-border-color: " + borderColor + "; " +
-                        "-fx-border-width: 1px; " +
-                        "-fx-border-radius: 4px;");
-            } else if (node instanceof ComboBox) {
-                control.setStyle("-fx-background-color: " + buttonColor + "; " +
-                        "-fx-text-fill: " + textColor + "; " +
-                        "-fx-border-color: " + borderColor + "; " +
-                        "-fx-border-width: 1px; " +
-                        "-fx-border-radius: 4px;");
-            } else if (node instanceof Label) {
-                control.setStyle("-fx-text-fill: " + textColor + ";");
-            } else if (node instanceof ListView) {
-                control.setStyle("-fx-background-color: " + bgColor + "; " +
-                        "-fx-text-fill: " + textColor + "; " +
-                        "-fx-border-color: " + borderColor + "; " +
-                        "-fx-border-width: 1px; " +
-                        "-fx-border-radius: 4px;");
-            }
-        }
-        
-        if (node instanceof Parent) {
-            for (Node child : ((Parent) node).getChildrenUnmodifiable()) {
-                applyStylesToAllChildren(child, bgColor, textColor, buttonColor, borderColor);
-            }
-        }
-    }
-
-    private void loadThemeConfiguration() {
-        Preferences prefs = Preferences.userNodeForPackage(getClass());
-        isDarkTheme = prefs.getBoolean("darkTheme", false);
-        applyTheme();
-    }
-
-    private void saveThemeConfiguration() {
-        Preferences prefs = Preferences.userNodeForPackage(getClass());
-        prefs.putBoolean("darkTheme", isDarkTheme);
+        themeManager.applyTheme();
+        btnThemeToggle.setText(themeManager.isDarkTheme() ? "☀" : "☽");
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -406,17 +234,17 @@ public class SpectrometerController {
     }
 
     private void setupConnectionEventHandlers() {
-        cbConnectionType.setOnAction(e -> handleConnectionTypeChange());
-        btnConnect.setOnAction(e -> toggleConnection());
+        cbConnectionType.setOnAction(e -> connectionManager.handleConnectionTypeChange(cbConnectionType, cbSerialPorts, tfAddress));
+        btnConnect.setOnAction(e -> connectionManager.toggleConnection(cbSerialPorts, tfAddress, lblStatus));
     }
 
     private void setupMeasurementEventHandlers() {
-        btnDark.setOnAction(e -> sendCommand("DARK"));
-        btnRef.setOnAction(e -> sendCommand("REF"));
-        btnCapture.setOnAction(e -> toggleCaptureMode());
-        btnSmooth.setOnAction(e -> applySmoothing());
-        btnMinima.setOnAction(e -> findMinima());
-        btnPeaks.setOnAction(e -> detectPeaks());
+        btnDark.setOnAction(e -> connectionManager.sendCommand("DARK"));
+        btnRef.setOnAction(e -> connectionManager.sendCommand("REF"));
+        btnCapture.setOnAction(e -> measurementManager.toggleCaptureMode(btnCapture));
+        btnSmooth.setOnAction(e -> measurementManager.applySmoothing());
+        btnMinima.setOnAction(e -> measurementManager.findMinima());
+        btnPeaks.setOnAction(e -> measurementManager.detectPeaks(tfPeakThreshold, tfPeakWindow));
         btnZoom.setOnAction(e ->
                 chart.setZoomMode(!chart.isZoomMode()
                 ));
@@ -430,245 +258,13 @@ public class SpectrometerController {
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Построение layout
+    // Вспомогательные методы
     // ────────────────────────────────────────────────────────────────
-    private void buildLayout() {
-        VBox mainContent = new VBox(15);
-        mainContent.setPadding(new Insets(20));
-        mainContent.getChildren().addAll(
-                buildConnectionPanel(),
-                buildMeasurementControls(),
-                chart,
-                new Label("Логи:"),
-                logView,
-                arduinoConnectionController.getView(),
-                stepperMotorController.getView()
-        );
-        
-        view.getChildren().addAll(
-                menuBar,
-                mainContent
-        );
-    }
-
-    private HBox buildConnectionPanel() {
-        HBox panel = new HBox(10);
-        panel.setAlignment(Pos.CENTER_LEFT);
-        panel.getChildren().addAll(
-                new Label("Тип:"), cbConnectionType,
-                new Label("Адрес:"), tfAddress,
-                cbSerialPorts,
-                btnConnect, lblStatus
-        );
-        return panel;
-    }
-
-    private HBox buildMeasurementControls() {
-        HBox controls = new HBox(20, btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks, btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle);
-        controls.getChildren().addAll(
-                new Label("Порог:"), tfPeakThreshold,
-                new Label("Окно:"), tfPeakWindow
-        );
-        tfPeakThreshold.setPrefWidth(80);
-        tfPeakWindow.setPrefWidth(80);
-        
-        // Настройка кнопки переключения темы
-        btnThemeToggle.setStyle("-fx-background-radius: 50%; -fx-min-width: 30; -fx-min-height: 30; -fx-max-width: 30; -fx-max-height: 30;");
-        btnThemeToggle.setOnAction(e -> toggleTheme());
-        
-        return controls;
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // Основная логика подключения к спектрометру
-    // ────────────────────────────────────────────────────────────────
-    private void handleConnectionTypeChange() {
-        currentConnectionType = cbConnectionType.getValue();
-        boolean isSerial = currentConnectionType == ConnectionType.SERIAL;
-
-        cbSerialPorts.setVisible(isSerial);
-        tfAddress.setVisible(!isSerial);
-
-        String prompt = isSerial ? "Выберите COM порт"
-                : "ws://IP:порт (например: 192.168.1.77:81)";
-        tfAddress.setPromptText(prompt);
-    }
-
     private void refreshPorts() {
-        cbSerialPorts.getItems().clear();
-        Arrays.stream(SerialPort.getCommPorts())
-                .forEach(port -> cbSerialPorts.getItems().add(
-                        port.getSystemPortName() + " - " + port.getDescriptivePortName()
-                ));
-
-        if (!cbSerialPorts.getItems().isEmpty()) {
-            cbSerialPorts.setValue(cbSerialPorts.getItems().getFirst());
-        }
+        connectionManager.refreshPorts(cbSerialPorts);
     }
 
-    private void toggleConnection() {
-        if (connState.connectedProperty().get()) {
-            disconnect();
-        } else {
-            connect();
-        }
-    }
-
-    private void connect() {
-        String address = getConnectionAddress();
-        if (address == null || address.isEmpty()) return;
-
-        connectionService = createConnectionService();
-        connectionService.connect(address);
-        saveConnectionConfiguration();
-    }
-
-    private String getConnectionAddress() {
-        return switch (currentConnectionType) {
-            case SERIAL -> getSelectedSerialPort();
-            case WEBSOCKET -> getWebSocketAddress();
-        };
-    }
-
-    private String getSelectedSerialPort() {
-        String selected = cbSerialPorts.getValue();
-        if (selected == null) {
-            lblStatus.setText("Выберите COM порт");
-            return null;
-        }
-        return selected.split(" ")[0];
-    }
-
-    private String getWebSocketAddress() {
-        String text = tfAddress.getText().trim();
-        return text.contains("://") ? text : "ws://" + text;
-    }
-
-    private ConnectionService createConnectionService() {
-        return switch (currentConnectionType) {
-            case SERIAL -> new SerialConnectionService(data, connState, this::updateChart);
-            case WEBSOCKET -> new WebSocketConnectionService(data, connState, this::updateChart);
-        };
-    }
-
-    private void disconnect() {
-        if (connectionService != null) {
-            connectionService.disconnect();
-        }
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // Логика управления измерениями
-    // ────────────────────────────────────────────────────────────────
-    private void toggleCaptureMode() {
-        if (!chart.isFrozen()) {
-            chart.capture(data);
-            btnCapture.setText("Live ON");
-        } else {
-            chart.release();
-            btnCapture.setText("Захватить");
-        }
-    }
-
-    private void applySmoothing() {
-        if (!chart.isFrozen()) {
-            LogService.log("Smooth is only available in Capture mode.");
-            return;
-        }
-        chart.smooth(Constants.SMOOTHING_WINDOW_SIZE);
-    }
-
-    private void detectPeaks() {
-        if (!validatePeakDetection()) return;
-        
-        try {
-            double threshold = Double.parseDouble(tfPeakThreshold.getText());
-            int window = Integer.parseInt(tfPeakWindow.getText());
-            
-            List<Peak> peaks = chart.detectPeaks(threshold, window);
-            LogService.log("Найдено пиков: " + peaks.size());
-            
-            for (Peak peak : peaks) {
-                LogService.log(String.format("Пик в пикселе %d: высота=%.2f, ширина=%.2f, площадь=%.2f",
-                        peak.getPixel(), peak.getHeight(), peak.getWidth(), peak.getArea()));
-            }
-        } catch (NumberFormatException e) {
-            LogService.log("Ошибка: порог и окно должны быть числами");
-        }
-    }
-
-    private boolean validatePeakDetection() {
-        if (!chart.isFrozen()) {
-            LogService.log("Детекция пиков доступна только в режиме Capture.");
-            return false;
-        }
-        
-        if (chart.getCapturedY() == null) {
-            LogService.log("Детекция пиков не возможна: нет захваченных данных.");
-            return false;
-        }
-        
-        return true;
-    }
-
-    private void findMinima() {
-        if (!validateMinimaSearch()) return;
-
-        LogService.log("Finding minimums on a captured chart...");
-        logCapturedDataRange();
-
-        chart.clearMinima();
-        List<Integer> minima = chart.findLocalMinima(50, 3000);
-
-        LogService.log("Minimums found: " + minima.size());
-        if (minima.isEmpty()) {
-            searchWithDifferentThresholds();
-        } else {
-            logMinimaDetails(minima);
-        }
-    }
-
-    private boolean validateMinimaSearch() {
-        if (!chart.isFrozen()) {
-            LogService.log("Minimum search is only available in Capture mode.");
-            LogService.log("The chart is frozen: " + chart.isFrozen());
-            LogService.log("capturedY: " + (chart.getCapturedY() != null ? "не null" : "null"));
-            return false;
-        }
-        return true;
-    }
-
-    private void logCapturedDataRange() {
-        if (chart.getCapturedY() != null) {
-            DoubleSummaryStatistics stats = Arrays.stream(chart.getCapturedY())
-                    .summaryStatistics();
-            LogService.log(String.format("capturedY range: min=%.2f, max=%.2f",
-                    stats.getMin(), stats.getMax()));
-        }
-    }
-
-    private void searchWithDifferentThresholds() {
-        double[] thresholds = {1000, 1500, 2000, 2500, 3000, 3500};
-        for (double threshold : thresholds) {
-            List<Integer> minima = chart.findLocalMinima(50, threshold);
-            LogService.log(String.format("  Threshold %.0f: found %d minima", threshold, minima.size()));
-            if (!minima.isEmpty()) {
-                chart.clearMinima();
-                chart.findLocalMinima(50, threshold);
-                break;
-            }
-        }
-    }
-
-    private void logMinimaDetails(List<Integer> minima) {
-        for (int idx : minima) {
-            double yValue = chart.getCapturedY() != null ? chart.getCapturedY()[idx] : 0;
-            LogService.log(String.format("  Pixel %d: Y=%.2f, RawValue=%.2f",
-                    idx, yValue, 4095 - yValue));
-        }
-    }
-
-    private void updateChart() {
+    public void updateChart() {
         if (chart.isFrozen() || !shouldRedraw()) return;
 
         lastRedraw = System.currentTimeMillis();
@@ -679,38 +275,12 @@ public class SpectrometerController {
         return System.currentTimeMillis() - lastRedraw >= Constants.REDRAW_INTERVAL_MS;
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Конфигурация
-    // ────────────────────────────────────────────────────────────────
     private void loadConfiguration() {
-        Preferences prefs = Preferences.userNodeForPackage(getClass());
-        ConnectionType type = ConnectionType.valueOf(
-                prefs.get("connectionType", "WEBSOCKET")
-        );
-        cbConnectionType.setValue(type);
-
-        if (type == ConnectionType.WEBSOCKET) {
-            tfAddress.setText(prefs.get("wsAddress", "192.168.1.77:81"));
-        }
+        configManager.loadConnectionConfiguration(cbConnectionType, tfAddress);
     }
 
-    private void saveConnectionConfiguration() {
-        Preferences prefs = Preferences.userNodeForPackage(getClass());
-        prefs.put("connectionType", currentConnectionType.name());
-
-        if (currentConnectionType == ConnectionType.WEBSOCKET) {
-            prefs.put("wsAddress", tfAddress.getText());
-        }
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // Вспомогательные методы
-    // ────────────────────────────────────────────────────────────────
-    private void sendCommand(String command) {
-        LogService.log("CMD ▶ " + command);
-        if (connectionService != null && connectionService.isConnected()) {
-            connectionService.sendCommand(command);
-        }
+    private void loadThemeConfiguration() {
+        themeManager.loadThemeConfiguration();
     }
 
     private void handleLogKeyPress(KeyEvent event) {
@@ -732,10 +302,5 @@ public class SpectrometerController {
 
     public VBox getView() {
         return view;
-    }
-
-    private String currentDate() {
-        LocalDateTime now = LocalDateTime.now();
-        return now.getYear() + "-" + now.getMonth().getValue() + "-" + now.getDayOfMonth() + " " + now.getHour() + ":" + now.getMinute() + ":" + now.getSecond() + " ";
     }
 }
