@@ -51,7 +51,7 @@ public class MeasurementManager {
 
             for (Peak peak : peaks) {
                 LogService.log(String.format("Пик в пикселе %d: высота=%.2f, ширина=%.2f, площадь=%.2f",
-                        peak.getPixel(), peak.getHeight(), peak.getWidth(), peak.getArea()));
+                        peak.pixel(), peak.height(), peak.width(), peak.area()));
             }
         } catch (NumberFormatException e) {
             LogService.log("Ошибка: порог и окно должны быть числами");

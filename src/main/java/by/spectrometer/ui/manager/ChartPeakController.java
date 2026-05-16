@@ -65,7 +65,7 @@ public class ChartPeakController {
             chart.getPeaksSeries().getData().clear();
 
             for (Peak peak : peaks) {
-                XYChart.Data<Number, Number> point = new XYChart.Data<>(peak.getPixel(), chart.getCapturedY()[peak.getPixel()]);
+                XYChart.Data<Number, Number> point = new XYChart.Data<>(peak.pixel(), chart.getCapturedY()[peak.pixel()]);
                 chart.getPeaksSeries().getData().add(point);
 
                 point.setExtraValue(new Object());
@@ -83,7 +83,7 @@ public class ChartPeakController {
                         """);
 
                         javafx.scene.control.Tooltip tooltip = new javafx.scene.control.Tooltip(String.format("Pixel: %d\nHeight: %.2f\nWidth: %.2f\nArea: %.2f",
-                                peak.getPixel(), peak.getHeight(), peak.getWidth(), peak.getArea()));
+                                peak.pixel(), peak.height(), peak.width(), peak.area()));
                         javafx.scene.control.Tooltip.install(newNode, tooltip);
                     }
                 });

@@ -53,6 +53,11 @@ public class SpectrometerController {
     private final TextField tfPeakThreshold = new TextField("1000");
     private final TextField tfPeakWindow = new TextField("50");
 
+    // comboBox2 equivalent — Integration time (SH period)
+    private ComboBox<String> cbIntegrationTime;
+    // comboBox3 equivalent — Capture mode
+    private ComboBox<String> cbCaptureMode;
+
     // ────────────────────────────────────────────────────────────────
     // Контроллеры для Arduino
     // ────────────────────────────────────────────────────────────────
@@ -94,10 +99,16 @@ public class SpectrometerController {
         measurementManager = new MeasurementManager(this, chart);
         configManager = new ConfigurationManager(getClass());
         exportManager = new ExportManager(data, chart);
+
+        // Create comboboxes now that uiBuilder is available
+        cbIntegrationTime = uiBuilder.createIntegrationTimeComboBox();
+        cbCaptureMode     = uiBuilder.createCaptureModeComboBox();
+
         view = uiBuilder.buildMainLayout(menuBar,
                 uiBuilder.buildConnectionPanel(cbConnectionType, tfAddress, cbSerialPorts, btnConnect, lblStatus),
                 uiBuilder.buildMeasurementControls(btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks,
                         btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle, tfPeakThreshold, tfPeakWindow),
+                uiBuilder.buildExposureRow(cbIntegrationTime, cbCaptureMode),
                 chart, logView, arduinoConnectionController, stepperMotorController);
         themeManager = new ThemeManager(this, view, menuBar);
         initializeUI();
@@ -251,6 +262,33 @@ public class SpectrometerController {
 
         btnZoomBack.setOnAction(e -> chart.zoomBack());
         btnZoomForward.setOnAction(e -> chart.zoomForward());
+
+        // comboBox2 equivalent — send INT_n command on selection change
+        cbIntegrationTime.setOnAction(e -> sendIntegrationTime());
+    }
+
+    /**
+     * Maps the currently selected index of the integration-time comboBox to the
+     * corresponding INT_1 … INT_10 firmware command and sends it to the device.
+     * <pre>
+     *   index 0 → INT_1  (SH = 20)
+     *   index 1 → INT_2  (SH = 40)
+     *   index 2 → INT_3  (SH = 100)
+     *   index 3 → INT_4  (SH = 120)
+     *   index 4 → INT_5  (SH = 150)
+     *   index 5 → INT_6  (SH = 200)
+     *   index 6 → INT_7  (SH = 1000)
+     *   index 7 → INT_8  (SH = 2500)
+     *   index 8 → INT_9  (SH = 5000)
+     *   index 9 → INT_10 (SH = 15000)
+     * </pre>
+     */
+    private void sendIntegrationTime() {
+        int sel = cbIntegrationTime.getSelectionModel().getSelectedIndex();
+        if (sel < 0 || sel > 9) return;
+        String cmd = "INT_" + (sel + 1);
+        connectionManager.sendCommand(cmd);
+        LogService.log("Интеграция → " + cbIntegrationTime.getValue() + "  (cmd: " + cmd + ")");
     }
 
     private void setupLogEventHandlers() {
