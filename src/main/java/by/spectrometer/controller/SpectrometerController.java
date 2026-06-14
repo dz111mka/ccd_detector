@@ -312,15 +312,6 @@ public class SpectrometerController {
 
         lastRedraw = System.currentTimeMillis();
         chart.redraw(data);
-
-        // Отладка: проверяем значения для первого пикселя
-        if (data.darkBufferReady && data.referenceBufferReady && data.displayMode == SpectrumData.DisplayMode.TRANSMISSION) {
-            double dark = data.dark[0];
-            double ref = data.reference[0];
-            double signal = data.raw[0];
-            LogService.log(String.format("UpdateChart: dark=%.1f, ref=%.1f, signal=%.1f, trans=%.3f",
-                    dark, ref, signal, (signal - dark) / (ref - dark)));
-        }
     }
 
     private boolean shouldRedraw() {

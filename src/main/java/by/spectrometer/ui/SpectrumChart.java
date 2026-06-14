@@ -231,7 +231,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
             } else {
                 yAxis.setLabel("Intensity");
                 yAxis.setAutoRanging(true);
-                yAxis.setTickLabelFormatter(null); // Сброс форматтера
+                yAxis.setTickLabelFormatter(null);
             }
         });
     }
@@ -252,11 +252,6 @@ public class SpectrumChart extends LineChart<Number, Number> {
             double signal = data.raw[idx];
             double denominator = dark - reference;
 
-            if (idx == 0) {
-                LogService.log(String.format("Transmission: dark=%.2f, ref=%.2f, signal=%.2f, denom=%.2f, trans=%.3f",
-                        dark, reference, signal, denominator, (dark - signal) / denominator));
-            }
-
             if (denominator > 50) {
                 double transmittance = (dark - signal) / denominator;
                 return Math.max(0, Math.min(1, transmittance));
@@ -265,7 +260,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
         }
 
         // Режим INTENSITY
-        return data.raw[idx];
+        return Math.abs(4095 - data.raw[idx]);
     }
 
     public void setTransmissionMode(boolean enabled) {
@@ -277,7 +272,6 @@ public class SpectrumChart extends LineChart<Number, Number> {
             yAxis.setAutoRanging(false);
             yAxis.setLowerBound(0);
             yAxis.setUpperBound(1.0);
-            // Форматтер для отображения процентов
             yAxis.setTickLabelFormatter(new NumberAxis.DefaultFormatter(yAxis) {
                 @Override
                 public String toString(Number object) {
@@ -285,7 +279,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
                 }
             });
         } else {
-            yAxis.setLabel("Intensity");
+            yAxis.setLabel("Intensity");  // Просто Intensity, без "inverted"
             yAxis.setAutoRanging(true);
             yAxis.setTickLabelFormatter(null);
         }
