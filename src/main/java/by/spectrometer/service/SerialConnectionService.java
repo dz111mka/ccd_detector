@@ -5,17 +5,21 @@ import by.spectrometer.model.SpectrumData;
 import com.fazecast.jSerialComm.SerialPort;
 import javafx.application.Platform;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import static by.spectrometer.util.Constants.TRANSMISSION_BUFFER_FRAMES;
+
 public class SerialConnectionService extends ConnectionService {
 
-    private static final int DATA_POINTS       = 3648;
+    private static final int DATA_POINTS = 3648;
     private static final int BUFFER_SIZE_12BIT = 7296;   // 3648 * 2
-    private static final int BUFFER_SIZE_8BIT  = 3648;
+    private static final int BUFFER_SIZE_8BIT = 3648;
 
-    private static final long FRAME_DELAY_MS   = 250;    // ← ключевая задержка, можно менять
+    private static final long FRAME_DELAY_MS = 250;    // ← ключевая задержка, можно менять
 
     private SerialPort port;
     private InputStream in;
@@ -127,8 +131,7 @@ public class SerialConnectionService extends ConnectionService {
             }
 
             if (adcMode == 0 && count >= BUFFER_SIZE_12BIT) {
-
-                // Мягкая ресинхронизация (если high-байт > 0x0F — пропускаем по байту)
+                // Мягкая ресинхронизация
                 while (count >= 2 && (dataBuffer.get(1) & 0xFF) > 0x0F) {
                     dataBuffer.removeFirst();
                     count = dataBuffer.size();
@@ -137,9 +140,9 @@ public class SerialConnectionService extends ConnectionService {
 
                 if (count < BUFFER_SIZE_12BIT) return;
 
-                // Чтение low first
+                // Чтение данных
                 for (int i = 0; i < DATA_POINTS; i++) {
-                    int lo = dataBuffer.get(2 * i)     & 0xFF;
+                    int lo = dataBuffer.get(2 * i) & 0xFF;
                     int hi = dataBuffer.get(2 * i + 1) & 0xFF;
                     data.raw[i] = (hi << 8) | lo;
                 }
@@ -147,25 +150,18 @@ public class SerialConnectionService extends ConnectionService {
                 generateWavelengths();
                 dataBuffer.subList(0, BUFFER_SIZE_12BIT).clear();
 
+                // ВАЖНО: сначала обрабатываем накопление буферов
+                handleBufferAccumulation();
+
+                // ВАЖНО: ВСЕГДА обновляем UI, даже если идет запись буферов
+                // Это позволит видеть прогресс накопления
                 Platform.runLater(onNewSpectrum);
 
                 sendCommand("START_12BIT");
 
-                // Задержка — ключ к стабильности
                 try {
                     Thread.sleep(FRAME_DELAY_MS);
                 } catch (InterruptedException ignored) {}
-            }
-            else if (adcMode == 1 && count >= BUFFER_SIZE_8BIT) {
-
-                for (int i = 0; i < DATA_POINTS; i++) {
-                    data.raw[i] = (dataBuffer.get(i) & 0xFF) << 4;
-                }
-
-                generateWavelengths();
-                dataBuffer.subList(0, BUFFER_SIZE_8BIT).clear();
-
-                Platform.runLater(onNewSpectrum);
             }
 
             if (count > 20000) {
@@ -175,23 +171,61 @@ public class SerialConnectionService extends ConnectionService {
         }
     }
 
+    private void handleBufferAccumulation() {
+        if (data.recordingMode == SpectrumData.BufferType.NONE) {
+            return;
+        }
+
+        if (data.recordingMode == SpectrumData.BufferType.DARK) {
+            if (data.bufferAccumulatorCount < TRANSMISSION_BUFFER_FRAMES) {
+                data.accumulateFrame(data.raw, SpectrumData.BufferType.DARK);
+                LogService.log(String.format("📝 Dark: кадр %d/%d",
+                        data.bufferAccumulatorCount, TRANSMISSION_BUFFER_FRAMES));
+            }
+
+            if (data.bufferAccumulatorCount >= TRANSMISSION_BUFFER_FRAMES) {
+                data.finalizeDarkBuffer(TRANSMISSION_BUFFER_FRAMES);
+                data.recordingMode = SpectrumData.BufferType.NONE;
+                LogService.log("✅ Dark сигнал записан и усреднён (" + TRANSMISSION_BUFFER_FRAMES + " кадров)");
+            }
+        } else if (data.recordingMode == SpectrumData.BufferType.REFERENCE) {
+            if (data.bufferAccumulatorCount < TRANSMISSION_BUFFER_FRAMES) {
+                data.accumulateFrame(data.raw, SpectrumData.BufferType.REFERENCE);
+                LogService.log(String.format("📝 Reference: кадр %d/%d",
+                        data.bufferAccumulatorCount, TRANSMISSION_BUFFER_FRAMES));
+            }
+
+            if (data.bufferAccumulatorCount >= TRANSMISSION_BUFFER_FRAMES) {
+                data.finalizeReferenceBuffer(TRANSMISSION_BUFFER_FRAMES);
+                data.recordingMode = SpectrumData.BufferType.NONE;
+                LogService.log("✅ Reference сигнал записан и усреднён (" + TRANSMISSION_BUFFER_FRAMES + " кадров)");
+            }
+        }
+    }
+
     @Override
     public void sendCommand(String commandStr) {
         byte cmd = switch (commandStr.toUpperCase()) {
-            case "START_12BIT" -> { adcMode = 0; yield (byte) 0xA1; }
-            case "START_8BIT"  -> { adcMode = 1; yield (byte) 0xA2; }
-            case "STATS"       -> (byte) 0xA3;
-            case "INT_1"       -> (byte) 0xB1;
-            case "INT_2"       -> (byte) 0xB2;
-            case "INT_3"       -> (byte) 0xB3;
-            case "INT_4"       -> (byte) 0xB4;
-            case "INT_5"       -> (byte) 0xB5;
-            case "INT_6"       -> (byte) 0xB6;
-            case "INT_7"       -> (byte) 0xB7;
-            case "INT_8"       -> (byte) 0xB8;
-            case "INT_9"       -> (byte) 0xB9;
-            case "INT_10"      -> (byte) 0xBA;
-            default            -> 0;
+            case "START_12BIT" -> {
+                adcMode = 0;
+                yield (byte) 0xA1;
+            }
+            case "START_8BIT" -> {
+                adcMode = 1;
+                yield (byte) 0xA2;
+            }
+            case "STATS" -> (byte) 0xA3;
+            case "INT_1" -> (byte) 0xB1;
+            case "INT_2" -> (byte) 0xB2;
+            case "INT_3" -> (byte) 0xB3;
+            case "INT_4" -> (byte) 0xB4;
+            case "INT_5" -> (byte) 0xB5;
+            case "INT_6" -> (byte) 0xB6;
+            case "INT_7" -> (byte) 0xB7;
+            case "INT_8" -> (byte) 0xB8;
+            case "INT_9" -> (byte) 0xB9;
+            case "INT_10" -> (byte) 0xBA;
+            default -> 0;
         };
 
         if (cmd == 0) return;
@@ -221,7 +255,8 @@ public class SerialConnectionService extends ConnectionService {
             if (port != null && port.isOpen()) {
                 port.closePort();
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         Platform.runLater(() -> state.setDisconnected("Disconnected"));
     }
