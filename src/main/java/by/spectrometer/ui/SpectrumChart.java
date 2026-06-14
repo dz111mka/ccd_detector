@@ -1,8 +1,8 @@
 package by.spectrometer.ui;
 
-import by.spectrometer.model.ChartScale;
-import by.spectrometer.model.SpectrumData;
 import by.spectrometer.model.Peak;
+import by.spectrometer.model.SpectrumData;
+import by.spectrometer.service.LogService;
 import by.spectrometer.ui.manager.ChartDataProcessor;
 import by.spectrometer.ui.manager.ChartPeakController;
 import by.spectrometer.ui.manager.ChartThemeManager;
@@ -13,14 +13,14 @@ import javafx.collections.ObservableList;
 import javafx.geometry.Point2D;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
-import javafx.scene.chart.*;
+import javafx.scene.chart.LineChart;
+import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.XYChart;
 import javafx.scene.control.Tooltip;
-import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
 
-import java.util.*;
+import java.util.List;
+import java.util.Set;
 
 public class SpectrumChart extends LineChart<Number, Number> {
 
@@ -39,6 +39,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
     private boolean showAbsorbance = false;
     private boolean frozen = false;
+    private boolean transmissionMode = false;
 
     // ────────────────────────────────────────────────────────────────
     // Managers
@@ -203,43 +204,107 @@ public class SpectrumChart extends LineChart<Number, Number> {
         boolean useAbs = showAbsorbance && data.hasDark && data.hasRef;
 
         Platform.runLater(() -> {
-            if (frozen && dataProcessor.getCapturedY() != null) {
-                return;
-            }
-
             spectrumSeries.getData().clear();
-
             ObservableList<XYChart.Data<Number, Number>> newPoints = FXCollections.observableArrayList();
 
             for (int i = 0; i < PIXEL_COUNT; i++) {
                 double y = computeYValue(data, i, useAbs);
+                // НЕ умножаем на 100 здесь - ось сама покажет проценты
                 newPoints.add(new XYChart.Data<>(i, y));
             }
 
             spectrumSeries.setData(newPoints);
 
-            double maxY = newPoints.stream()
-                    .mapToDouble(p -> p.getYValue().doubleValue())
-                    .max().orElse(40960.0);
-
             NumberAxis yAxis = (NumberAxis) getYAxis();
-            yAxis.setUpperBound(Math.max(40960, maxY * 1.1));
-            yAxis.setLowerBound(0);
+            if (transmissionMode) {
+                yAxis.setLabel("Transmittance");
+                yAxis.setAutoRanging(false);
+                yAxis.setLowerBound(0);
+                yAxis.setUpperBound(1.0);  // Диапазон 0-1 (0%-100%)
+                // Форматируем как проценты
+                yAxis.setTickLabelFormatter(new NumberAxis.DefaultFormatter(yAxis) {
+                    @Override
+                    public String toString(Number object) {
+                        return String.format("%.0f%%", object.doubleValue() * 100);
+                    }
+                });
+            } else {
+                yAxis.setLabel("Intensity");
+                yAxis.setAutoRanging(true);
+                yAxis.setTickLabelFormatter(null); // Сброс форматтера
+            }
         });
     }
 
     private double computeYValue(SpectrumData data, int idx, boolean useAbsorbance) {
-        double rawValue;
-
         if (useAbsorbance) {
-            double denom = data.reference[idx] - data.dark[idx];
-            rawValue = denom > 50
-                    ? -Math.log10((data.raw[idx] - data.dark[idx]) / denom)
+            double denom = data.dark[idx] - data.reference[idx]; // Инвертировано!
+            double value = denom > 50
+                    ? -Math.log10((data.dark[idx] - data.raw[idx]) / denom)  // Инвертировано!
                     : 0.0;
-        } else {
-            rawValue = data.raw[idx];
+            return value;
         }
-        return (4095 - rawValue) * 10;
+
+        // Режим TRANSMISSION
+        if (transmissionMode && data.darkBufferReady && data.referenceBufferReady) {
+            double dark = data.dark[idx];
+            double reference = data.reference[idx];
+            double signal = data.raw[idx];
+            double denominator = dark - reference;
+
+            if (idx == 0) {
+                LogService.log(String.format("Transmission: dark=%.2f, ref=%.2f, signal=%.2f, denom=%.2f, trans=%.3f",
+                        dark, reference, signal, denominator, (dark - signal) / denominator));
+            }
+
+            if (denominator > 50) {
+                double transmittance = (dark - signal) / denominator;
+                return Math.max(0, Math.min(1, transmittance));
+            }
+            return 0.0;
+        }
+
+        // Режим INTENSITY
+        return data.raw[idx];
+    }
+
+    public void setTransmissionMode(boolean enabled) {
+        this.transmissionMode = enabled;
+        NumberAxis yAxis = (NumberAxis) getYAxis();
+
+        if (enabled) {
+            yAxis.setLabel("Transmittance");
+            yAxis.setAutoRanging(false);
+            yAxis.setLowerBound(0);
+            yAxis.setUpperBound(1.0);
+            // Форматтер для отображения процентов
+            yAxis.setTickLabelFormatter(new NumberAxis.DefaultFormatter(yAxis) {
+                @Override
+                public String toString(Number object) {
+                    return String.format("%.0f%%", object.doubleValue() * 100);
+                }
+            });
+        } else {
+            yAxis.setLabel("Intensity");
+            yAxis.setAutoRanging(true);
+            yAxis.setTickLabelFormatter(null);
+        }
+    }
+
+    public void forceRedraw(SpectrumData data) {
+        boolean useAbs = showAbsorbance && data.hasDark && data.hasRef;
+
+        Platform.runLater(() -> {
+            ObservableList<XYChart.Data<Number, Number>> newPoints = FXCollections.observableArrayList();
+
+            for (int i = 0; i < PIXEL_COUNT; i++) {
+                double y = computeYValue(data, i, useAbs);
+                // НЕ умножаем на 100
+                newPoints.add(new XYChart.Data<>(i, y));
+            }
+
+            spectrumSeries.setData(newPoints);
+        });
     }
 
     public void capture(SpectrumData data) {
@@ -247,7 +312,8 @@ public class SpectrumChart extends LineChart<Number, Number> {
         double[] capturedData = new double[PIXEL_COUNT];
         dataProcessor.clearMinima();
         for (int i = 0; i < PIXEL_COUNT; i++) {
-            capturedData[i] = computeYValue(data, i, false);
+            double y = computeYValue(data, i, false);
+            capturedData[i] = y;  // Сохраняем как есть (0-1 для transmission, raw для intensity)
         }
         dataProcessor.setCapturedY(capturedData);
         redrawFromArray(capturedData);
@@ -263,6 +329,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
             spectrumSeries.getData().clear();
             ObservableList<XYChart.Data<Number, Number>> pts = FXCollections.observableArrayList();
             for (int i = 0; i < PIXEL_COUNT; i++) {
+                // НЕ умножаем на 100 - данные уже в правильном диапазоне
                 pts.add(new XYChart.Data<>(i, y[i]));
             }
             spectrumSeries.setData(pts);
@@ -337,14 +404,14 @@ public class SpectrumChart extends LineChart<Number, Number> {
                     Set<Node> symbols = newNode.lookupAll(".chart-series-symbol");
                     for (Node symbol : symbols) {
                         symbol.setStyle("""
-                            -fx-background-color: red;
-                            -fx-background-radius: 5px;
-                            -fx-padding: 5px;
-                            -fx-border-color: white;
-                            -fx-border-width: 2px;
-                            -fx-border-radius: 5px;
-                            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
-                        """);
+                                    -fx-background-color: red;
+                                    -fx-background-radius: 5px;
+                                    -fx-padding: 5px;
+                                    -fx-border-color: white;
+                                    -fx-border-width: 2px;
+                                    -fx-border-radius: 5px;
+                                    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
+                                """);
                         symbol.setVisible(true);
                     }
                 });
@@ -366,14 +433,14 @@ public class SpectrumChart extends LineChart<Number, Number> {
                     Set<Node> symbols = newNode.lookupAll(".chart-series-symbol");
                     for (Node symbol : symbols) {
                         symbol.setStyle("""
-                            -fx-background-color: green;
-                            -fx-background-radius: 5px;
-                            -fx-padding: 5px;
-                            -fx-border-color: white;
-                            -fx-border-width: 2px;
-                            -fx-border-radius: 5px;
-                            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
-                        """);
+                                    -fx-background-color: green;
+                                    -fx-background-radius: 5px;
+                                    -fx-padding: 5px;
+                                    -fx-border-color: white;
+                                    -fx-border-width: 2px;
+                                    -fx-border-radius: 5px;
+                                    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
+                                """);
                         symbol.setVisible(true);
                     }
                 });

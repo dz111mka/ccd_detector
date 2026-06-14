@@ -50,6 +50,8 @@ public class SpectrometerController {
     private final Button btnMinima = new Button("Минимумы");
     private final Button btnSmooth = new Button("Сгладить");
     private final Button btnPeaks = new Button("Пики");
+    private final Button btnTransmissionMode = new Button("Transmission Mode");
+    private final Button btnClearBuffers = new Button("Clear Buffers");
     private final TextField tfPeakThreshold = new TextField("1000");
     private final TextField tfPeakWindow = new TextField("50");
 
@@ -102,12 +104,13 @@ public class SpectrometerController {
 
         // Create comboboxes now that uiBuilder is available
         cbIntegrationTime = uiBuilder.createIntegrationTimeComboBox();
-        cbCaptureMode     = uiBuilder.createCaptureModeComboBox();
+        cbCaptureMode = uiBuilder.createCaptureModeComboBox();
 
         view = uiBuilder.buildMainLayout(menuBar,
                 uiBuilder.buildConnectionPanel(cbConnectionType, tfAddress, cbSerialPorts, btnConnect, lblStatus),
                 uiBuilder.buildMeasurementControls(btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks,
-                        btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle, tfPeakThreshold, tfPeakWindow),
+                        btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle, tfPeakThreshold, tfPeakWindow,
+                        btnTransmissionMode, btnClearBuffers),
                 uiBuilder.buildExposureRow(cbIntegrationTime, cbCaptureMode),
                 chart, logView, arduinoConnectionController, stepperMotorController);
         themeManager = new ThemeManager(this, view, menuBar);
@@ -176,9 +179,9 @@ public class SpectrometerController {
         logView.setPrefHeight(200);
         logView.setMaxHeight(200);
         logView.setStyle("""
-            -fx-font-family: Consolas;
-            -fx-font-size: 12;
-        """);
+                    -fx-font-family: Consolas;
+                    -fx-font-size: 12;
+                """);
         logView.setPrefWidth(2000);
         logView.setMaxWidth(2000);
     }
@@ -250,12 +253,14 @@ public class SpectrometerController {
     }
 
     private void setupMeasurementEventHandlers() {
-        btnDark.setOnAction(e -> connectionManager.sendCommand("DARK"));
-        btnRef.setOnAction(e -> connectionManager.sendCommand("REF"));
+        btnDark.setOnAction(e -> measurementManager.recordDarkSignal());
+        btnRef.setOnAction(e -> measurementManager.recordReferenceSignal());
         btnCapture.setOnAction(e -> measurementManager.toggleCaptureMode(btnCapture));
         btnSmooth.setOnAction(e -> measurementManager.applySmoothing());
         btnMinima.setOnAction(e -> measurementManager.findMinima());
         btnPeaks.setOnAction(e -> measurementManager.detectPeaks(tfPeakThreshold, tfPeakWindow));
+        btnTransmissionMode.setOnAction(e -> measurementManager.toggleTransmissionMode(btnTransmissionMode));
+        btnClearBuffers.setOnAction(e -> measurementManager.clearBuffers());
         btnZoom.setOnAction(e ->
                 chart.setZoomMode(!chart.isZoomMode()
                 ));
@@ -307,6 +312,15 @@ public class SpectrometerController {
 
         lastRedraw = System.currentTimeMillis();
         chart.redraw(data);
+
+        // Отладка: проверяем значения для первого пикселя
+        if (data.darkBufferReady && data.referenceBufferReady && data.displayMode == SpectrumData.DisplayMode.TRANSMISSION) {
+            double dark = data.dark[0];
+            double ref = data.reference[0];
+            double signal = data.raw[0];
+            LogService.log(String.format("UpdateChart: dark=%.1f, ref=%.1f, signal=%.1f, trans=%.3f",
+                    dark, ref, signal, (signal - dark) / (ref - dark)));
+        }
     }
 
     private boolean shouldRedraw() {
@@ -340,5 +354,12 @@ public class SpectrometerController {
 
     public VBox getView() {
         return view;
+    }
+
+    private void setupBufferListeners() {
+        data.darkBufferReady = false;
+        data.referenceBufferReady = false;
+
+        // Можно добавить property для отслеживания, но пока просто в MeasurementManager
     }
 }

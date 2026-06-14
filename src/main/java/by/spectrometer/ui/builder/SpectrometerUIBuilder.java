@@ -97,12 +97,14 @@ public class SpectrometerUIBuilder {
                                          Button btnSmooth, Button btnMinima, Button btnPeaks,
                                          Button btnZoom, Button btnZoomBack, Button btnZoomForward,
                                          Button btnThemeToggle, TextField tfPeakThreshold,
-                                         TextField tfPeakWindow) {
+                                         TextField tfPeakWindow, Button btnTransmissionMode,
+                                         Button btnClearBuffers) {
         HBox controls = new HBox(8);
         controls.setAlignment(Pos.CENTER_LEFT);
         controls.getChildren().addAll(
                 btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks,
                 btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle,
+                btnTransmissionMode, btnClearBuffers,
                 new Label("Порог:"), tfPeakThreshold,
                 new Label("Окно:"), tfPeakWindow
         );
@@ -117,6 +119,7 @@ public class SpectrometerUIBuilder {
 
     /**
      * Builds the second row: Integration-time dropdown + Capture-mode dropdown.
+     *
      * @return VBox containing the labeled HBox row (can be embedded directly in parent layout)
      */
     public VBox buildExposureRow(ComboBox<String> cbIntegrationTime, ComboBox<String> cbCaptureMode) {

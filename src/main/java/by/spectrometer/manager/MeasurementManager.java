@@ -2,9 +2,11 @@ package by.spectrometer.manager;
 
 import by.spectrometer.controller.SpectrometerController;
 import by.spectrometer.model.Peak;
+import by.spectrometer.model.SpectrumData;
 import by.spectrometer.service.LogService;
 import by.spectrometer.ui.SpectrumChart;
 import by.spectrometer.util.Constants;
+import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
 
 import java.util.Arrays;
@@ -127,5 +129,73 @@ public class MeasurementManager {
             LogService.log(String.format("  Pixel %d: Y=%.2f, RawValue=%.2f",
                     idx, yValue, 4095 - yValue));
         }
+    }
+
+    public void recordDarkSignal() {
+        SpectrumData data = controller.getData();
+        data.recordingMode = SpectrumData.BufferType.DARK;
+        data.bufferAccumulatorCount = 0;
+        data.darkBufferReady = false;
+        Arrays.fill(data.darkBuffer, 0.0);
+        LogService.log("Recording dark signal... (" + Constants.TRANSMISSION_BUFFER_FRAMES + " frames)");
+    }
+
+    public void recordReferenceSignal() {
+        SpectrumData data = controller.getData();
+        if (!data.darkBufferReady) {
+            LogService.log("Dark signal not ready. Record dark signal first.");
+            return;
+        }
+        data.recordingMode = SpectrumData.BufferType.REFERENCE;
+        data.bufferAccumulatorCount = 0;
+        data.referenceBufferReady = false;
+        Arrays.fill(data.referenceBuffer, 0.0);
+        LogService.log("Recording reference signal... (" + Constants.TRANSMISSION_BUFFER_FRAMES + " frames)");
+    }
+
+    public void toggleTransmissionMode(Button btnTransmissionMode) {
+        SpectrumData data = controller.getData();
+
+        if (data.displayMode == SpectrumData.DisplayMode.INTENSITY) {
+            if (!data.darkBufferReady) {
+                LogService.log("❌ Dark сигнал не записан. Нажмите 'Тёмный ток'");
+                return;
+            }
+            if (!data.referenceBufferReady) {
+                LogService.log("❌ Reference сигнал не записан. Нажмите 'Белая опора'");
+                return;
+            }
+
+            data.displayMode = SpectrumData.DisplayMode.TRANSMISSION;
+            btnTransmissionMode.setText("Intensity Mode");
+            chart.setTransmissionMode(true);
+            LogService.log("✅ Переключено в режим TRANSMISSION (0-100%)");
+
+            // ВАЖНО: Принудительно обновляем график с новым режимом
+            chart.forceRedraw(data);
+        } else {
+            data.displayMode = SpectrumData.DisplayMode.INTENSITY;
+            btnTransmissionMode.setText("Transmission Mode");
+            chart.setTransmissionMode(false);
+            LogService.log("✅ Переключено в режим INTENSITY");
+
+            // ВАЖНО: Принудительно обновляем график
+            chart.forceRedraw(data);
+        }
+    }
+
+    public void clearBuffers() {
+        SpectrumData data = controller.getData();
+        data.hasDark = false;
+        data.hasRef = false;
+        data.darkBufferReady = false;
+        data.referenceBufferReady = false;
+        data.bufferAccumulatorCount = 0;
+        data.recordingMode = SpectrumData.BufferType.NONE;
+        Arrays.fill(data.dark, 0.0);
+        Arrays.fill(data.reference, 0.0);
+        Arrays.fill(data.darkBuffer, 0.0);
+        Arrays.fill(data.referenceBuffer, 0.0);
+        LogService.log("Buffers cleared.");
     }
 }

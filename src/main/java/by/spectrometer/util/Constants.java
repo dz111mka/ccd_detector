@@ -13,17 +13,18 @@ public class Constants {
     public static final int FINE_ADJUSTMENT_MIN = -45;
     public static final int FINE_ADJUSTMENT_MAX = 45;
     public static final int SMOOTHING_WINDOW_SIZE = 5;
+    public static final int TRANSMISSION_BUFFER_FRAMES = 10;
 
     // ────────────────────────────────────────────────────────────────
     // Интеграция (SH period / exposure time)
     // Значения correspond to firmware commands INT_1 .. INT_10
     // Integration time t_int = SH_period / 2 MHz
     // ────────────────────────────────────────────────────────────────
-    public static final int SH_PERIOD_10US  = 20;    // INT_1
-    public static final int SH_PERIOD_20US  = 40;    // INT_2
-    public static final int SH_PERIOD_50US  = 100;   // INT_3
-    public static final int SH_PERIOD_60US  = 120;   // INT_4
-    public static final int SH_PERIOD_75US  = 150;   // INT_5
+    public static final int SH_PERIOD_10US = 20;    // INT_1
+    public static final int SH_PERIOD_20US = 40;    // INT_2
+    public static final int SH_PERIOD_50US = 100;   // INT_3
+    public static final int SH_PERIOD_60US = 120;   // INT_4
+    public static final int SH_PERIOD_75US = 150;   // INT_5
     public static final int SH_PERIOD_100US = 200;   // INT_6
     public static final int SH_PERIOD_500US = 1000;  // INT_7
     public static final int SH_PERIOD_1250US = 2500;  // INT_8
