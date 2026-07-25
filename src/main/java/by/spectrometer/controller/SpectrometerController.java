@@ -3,6 +3,7 @@ package by.spectrometer.controller;
 import by.spectrometer.manager.*;
 import by.spectrometer.model.ConnectionState;
 import by.spectrometer.model.ConnectionType;
+import by.spectrometer.model.SimulationTemplate;
 import by.spectrometer.model.SpectrumData;
 import by.spectrometer.service.ExportService;
 import by.spectrometer.service.LogService;
@@ -59,6 +60,7 @@ public class SpectrometerController {
     private ComboBox<String> cbIntegrationTime;
     // comboBox3 equivalent — Capture mode
     private ComboBox<String> cbCaptureMode;
+    private ComboBox<SimulationTemplate> cbSimulationTemplate;
 
     // ────────────────────────────────────────────────────────────────
     // Контроллеры для Arduino
@@ -105,13 +107,14 @@ public class SpectrometerController {
         // Create comboboxes now that uiBuilder is available
         cbIntegrationTime = uiBuilder.createIntegrationTimeComboBox();
         cbCaptureMode = uiBuilder.createCaptureModeComboBox();
+        cbSimulationTemplate = uiBuilder.createSimulationTemplateComboBox();
 
         view = uiBuilder.buildMainLayout(menuBar,
                 uiBuilder.buildConnectionPanel(cbConnectionType, tfAddress, cbSerialPorts, btnConnect, lblStatus),
                 uiBuilder.buildMeasurementControls(btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks,
                         btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle, tfPeakThreshold, tfPeakWindow,
                         btnTransmissionMode, btnClearBuffers),
-                uiBuilder.buildExposureRow(cbIntegrationTime, cbCaptureMode),
+                uiBuilder.buildExposureRow(cbIntegrationTime, cbCaptureMode, cbSimulationTemplate),
                 chart, logView, arduinoConnectionController, stepperMotorController);
         themeManager = new ThemeManager(this, view, menuBar);
         initializeUI();
@@ -248,7 +251,10 @@ public class SpectrometerController {
     }
 
     private void setupConnectionEventHandlers() {
-        cbConnectionType.setOnAction(e -> connectionManager.handleConnectionTypeChange(cbConnectionType, cbSerialPorts, tfAddress));
+        cbConnectionType.setOnAction(e -> {
+            connectionManager.handleConnectionTypeChange(cbConnectionType, cbSerialPorts, tfAddress);
+            updateSimulationTemplateVisibility();
+        });
         btnConnect.setOnAction(e -> connectionManager.toggleConnection(cbSerialPorts, tfAddress, lblStatus));
     }
 
@@ -270,6 +276,7 @@ public class SpectrometerController {
 
         // comboBox2 equivalent — send INT_n command on selection change
         cbIntegrationTime.setOnAction(e -> sendIntegrationTime());
+        cbSimulationTemplate.setOnAction(e -> sendSimulationTemplate());
     }
 
     /**
@@ -294,6 +301,15 @@ public class SpectrometerController {
         String cmd = "INT_" + (sel + 1);
         connectionManager.sendCommand(cmd);
         LogService.log("Интеграция → " + cbIntegrationTime.getValue() + "  (cmd: " + cmd + ")");
+    }
+
+    private void sendSimulationTemplate() {
+        SimulationTemplate template = cbSimulationTemplate.getValue();
+        if (template == null) return;
+
+        String cmd = "SIM_TEMPLATE_" + template.name();
+        connectionManager.sendCommand(cmd);
+        LogService.log("Шаблон симуляции → " + template);
     }
 
     private void setupLogEventHandlers() {
@@ -321,6 +337,13 @@ public class SpectrometerController {
     private void loadConfiguration() {
         configManager.loadConnectionConfiguration(cbConnectionType, tfAddress);
         connectionManager.handleConnectionTypeChange(cbConnectionType, cbSerialPorts, tfAddress);
+        updateSimulationTemplateVisibility();
+    }
+
+    private void updateSimulationTemplateVisibility() {
+        boolean isSimulator = cbConnectionType.getValue() == ConnectionType.SIMULATOR;
+        cbSimulationTemplate.setVisible(isSimulator);
+        cbSimulationTemplate.setManaged(isSimulator);
     }
 
     private void loadThemeConfiguration() {

@@ -4,6 +4,7 @@ import by.spectrometer.controller.ArduinoConnectionController;
 import by.spectrometer.controller.SpectrometerController;
 import by.spectrometer.controller.StepperMotorController;
 import by.spectrometer.model.ConnectionType;
+import by.spectrometer.model.SimulationTemplate;
 import by.spectrometer.service.ExportService;
 import by.spectrometer.ui.SpectrumChart;
 import javafx.geometry.Insets;
@@ -122,16 +123,19 @@ public class SpectrometerUIBuilder {
      *
      * @return VBox containing the labeled HBox row (can be embedded directly in parent layout)
      */
-    public VBox buildExposureRow(ComboBox<String> cbIntegrationTime, ComboBox<String> cbCaptureMode) {
+    public VBox buildExposureRow(ComboBox<String> cbIntegrationTime, ComboBox<String> cbCaptureMode,
+                                 ComboBox<SimulationTemplate> cbSimulationTemplate) {
         cbIntegrationTime.setPrefWidth(120);
         cbCaptureMode.setPrefWidth(150);
+        cbSimulationTemplate.setPrefWidth(260);
 
         HBox row = new HBox(12);
         row.setAlignment(Pos.CENTER_LEFT);
         row.setPadding(new Insets(4, 0, 0, 0));
         row.getChildren().addAll(
                 new Label("Интеграция:"), cbIntegrationTime,
-                new Label("Режим сбора:"), cbCaptureMode
+                new Label("Режим сбора:"), cbCaptureMode,
+                new Label("Симуляция:"), cbSimulationTemplate
         );
         return new VBox(row);
     }
@@ -170,6 +174,13 @@ public class SpectrometerUIBuilder {
                 "Пакетный режим (0xFE заголовок)"
         );
         cb.setValue("Все данные — 12 бит");
+        return cb;
+    }
+
+    public ComboBox<SimulationTemplate> createSimulationTemplateComboBox() {
+        ComboBox<SimulationTemplate> cb = new ComboBox<>();
+        cb.getItems().addAll(SimulationTemplate.values());
+        cb.setValue(SimulationTemplate.CHLOROPHYLL_VISIBLE);
         return cb;
     }
 

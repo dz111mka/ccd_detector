@@ -25,6 +25,7 @@ public class ConnectionManager {
 
     private ConnectionService connectionService;
     private ConnectionType currentConnectionType = ConnectionType.SERIAL;
+    private String pendingSimulatorTemplateCommand = "SIM_TEMPLATE_CHLOROPHYLL_VISIBLE";
 
     public ConnectionManager(SpectrometerController controller, SpectrumData data, ConnectionState connState) {
         this.controller = controller;
@@ -77,6 +78,7 @@ public class ConnectionManager {
 
         connectionService = createConnectionService();
         connectionService.connect(address);
+        applyPendingSimulatorTemplate();
         saveConnectionConfiguration();
     }
 
@@ -118,8 +120,19 @@ public class ConnectionManager {
 
     public void sendCommand(String command) {
         LogService.log("CMD ▶ " + command);
+        if (command.startsWith("SIM_TEMPLATE_")) {
+            pendingSimulatorTemplateCommand = command;
+        }
         if (connectionService != null && connectionService.isConnected()) {
             connectionService.sendCommand(command);
+        }
+    }
+
+    private void applyPendingSimulatorTemplate() {
+        if (currentConnectionType == ConnectionType.SIMULATOR
+                && connectionService != null
+                && connectionService.isConnected()) {
+            connectionService.sendCommand(pendingSimulatorTemplateCommand);
         }
     }
 
