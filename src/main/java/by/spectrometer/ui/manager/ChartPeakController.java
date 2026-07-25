@@ -6,6 +6,8 @@ import by.spectrometer.service.PeakDetectionService;
 import by.spectrometer.ui.SpectrumChart;
 import javafx.application.Platform;
 import javafx.scene.chart.XYChart;
+import javafx.scene.control.Tooltip;
+import javafx.scene.layout.StackPane;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -67,29 +69,32 @@ public class ChartPeakController {
 
             for (Peak peak : peaks) {
                 XYChart.Data<Number, Number> point = new XYChart.Data<>(peak.pixel(), chart.getCapturedY()[peak.pixel()]);
+                point.setNode(createPeakMarker(peak));
                 chart.getPeaksSeries().getData().add(point);
-
-                point.setExtraValue(new Object());
-
-                point.nodeProperty().addListener((obs, oldNode, newNode) -> {
-                    if (newNode != null) {
-                        newNode.setStyle("""
-                            -fx-background-color: green;
-                            -fx-background-radius: 5px;
-                            -fx-padding: 5px;
-                            -fx-border-color: white;
-                            -fx-border-width: 2px;
-                            -fx-border-radius: 5px;
-                            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
-                        """);
-
-                        javafx.scene.control.Tooltip tooltip = new javafx.scene.control.Tooltip(String.format("Pixel: %d\nHeight: %.2f\nWidth: %.2f\nArea: %.2f",
-                                peak.pixel(), peak.height(), peak.width(), peak.area()));
-                        javafx.scene.control.Tooltip.install(newNode, tooltip);
-                    }
-                });
             }
         });
+    }
+
+    private StackPane createPeakMarker(Peak peak) {
+        StackPane marker = new StackPane();
+        marker.setMinSize(12, 12);
+        marker.setPrefSize(12, 12);
+        marker.setMaxSize(12, 12);
+        marker.setStyle("""
+                -fx-background-color: #30d158;
+                -fx-background-radius: 6px;
+                -fx-border-color: white;
+                -fx-border-width: 2px;
+                -fx-border-radius: 6px;
+                -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.85), 6, 0, 0, 1);
+                """);
+
+        Tooltip.install(marker, new Tooltip(String.format(
+                "Peak\nPixel: %d\nHeight: %.2f\nFWHM: %.2f\nArea: %.2f\nBest fit: %s\nGaussian R²: %.3f\nLorentzian R²: %.3f",
+                peak.pixel(), peak.height(), peak.fwhm(), peak.area(), peak.bestFit(),
+                peak.gaussianR2(), peak.lorentzianR2()
+        )));
+        return marker;
     }
 
     public void clearPeaks() {

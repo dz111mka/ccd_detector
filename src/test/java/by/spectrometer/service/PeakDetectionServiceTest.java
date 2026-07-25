@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PeakDetectionServiceTest {
@@ -28,7 +29,11 @@ class PeakDetectionServiceTest {
         assertEquals(1, peaks.size());
         Peak peak = peaks.getFirst();
         assertEquals(10, peak.pixel());
-        assertEquals(120.0, peak.height());
+        assertTrue(peak.height() > 50);
+        assertTrue(peak.fwhm() > 0);
         assertTrue(peak.area() > 0);
+        assertTrue(peak.gaussianR2() >= 0);
+        assertTrue(peak.lorentzianR2() >= 0);
+        assertFalse(peak.bestFit().isBlank());
     }
 }

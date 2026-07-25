@@ -1,8 +1,9 @@
 package by.spectrometer.service;
 
-import by.spectrometer.model.Peak;
-
 public class PeakFittingService {
+
+    public record FitResult(double[] parameters, double sse, double rSquared) {
+    }
 
     public interface PeakFunction {
         double evaluate(double x, double[] params);
@@ -54,6 +55,10 @@ public class PeakFittingService {
     }
 
     public double[] fitPeak(double[] data, int peakPixel, PeakFunction function, int windowSize) {
+        return fitPeakWithQuality(data, peakPixel, function, windowSize).parameters();
+    }
+
+    public FitResult fitPeakWithQuality(double[] data, int peakPixel, PeakFunction function, int windowSize) {
         int start = Math.max(0, peakPixel - windowSize);
         int end = Math.min(data.length - 1, peakPixel + windowSize);
         
@@ -75,7 +80,7 @@ public class PeakFittingService {
             }
         }
         
-        return bestParams;
+        return new FitResult(bestParams, minError, calculateRSquared(data, start, end, function, bestParams));
     }
 
     private double calculateFittingError(double[] data, int start, int end, PeakFunction function, double[] params) {
@@ -88,6 +93,30 @@ public class PeakFittingService {
         }
         
         return error;
+    }
+
+    private double calculateRSquared(double[] data, int start, int end, PeakFunction function, double[] params) {
+        double mean = 0;
+        int count = end - start + 1;
+
+        for (int i = start; i <= end; i++) {
+            mean += data[i];
+        }
+        mean /= count;
+
+        double sse = 0;
+        double sst = 0;
+        for (int i = start; i <= end; i++) {
+            double predicted = function.evaluate(i, params);
+            double actual = data[i];
+            sse += Math.pow(predicted - actual, 2);
+            sst += Math.pow(actual - mean, 2);
+        }
+
+        if (sst == 0) {
+            return 1.0;
+        }
+        return Math.max(0.0, 1.0 - sse / sst);
     }
 
     public double[] generateFittedPeak(double[] data, int peakPixel, PeakFunction function, int windowSize) {

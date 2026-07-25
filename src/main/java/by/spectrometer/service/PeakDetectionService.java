@@ -10,21 +10,25 @@ public class PeakDetectionService {
     private double peakThreshold = 1000;
     private int peakWindow = 50;
     private double baselineSmoothing = 50;
+    private final PeakFittingService fittingService = new PeakFittingService();
 
     public List<Peak> detectPeaks(double[] data, double baseline) {
+        double[] smoothed = applySavitzkyGolay(data);
+        double[] baselineCurve = calculateBaseline(smoothed);
+        double[] corrected = applyBaselineCorrection(smoothed, baselineCurve);
         List<Peak> peaks = new ArrayList<>();
 
-        for (int i = peakWindow; i < data.length - peakWindow; i++) {
+        for (int i = peakWindow; i < corrected.length - peakWindow; i++) {
             boolean isPeak = true;
-            double peakIntensity = data[i] - baseline;
+            double peakIntensity = corrected[i];
 
             if (peakIntensity < peakThreshold) {
                 continue;
             }
 
             for (int j = 1; j <= peakWindow; j++) {
-                double leftIntensity = data[i - j] - baseline;
-                double rightIntensity = data[i + j] - baseline;
+                double leftIntensity = corrected[i - j];
+                double rightIntensity = corrected[i + j];
 
                 if (leftIntensity > peakIntensity || rightIntensity > peakIntensity) {
                     isPeak = false;
@@ -33,7 +37,7 @@ public class PeakDetectionService {
             }
 
             if (isPeak) {
-                Peak peak = buildPeak(i, data[i], data, baseline);
+                Peak peak = buildPeak(i, data[i], corrected, baselineCurve);
                 peaks.add(peak);
             }
         }
@@ -41,25 +45,34 @@ public class PeakDetectionService {
         return peaks;
     }
 
-    private Peak buildPeak(int pixel, double intensity, double[] data, double baseline) {
-        double height = data[pixel] - baseline;
+    private Peak buildPeak(int pixel, double intensity, double[] corrected, double[] baseline) {
+        double height = corrected[pixel];
 
-        int leftBoundary = findPeakBoundary(pixel, -1, data, baseline, height);
-        int rightBoundary = findPeakBoundary(pixel, 1, data, baseline, height);
+        int leftBoundary = findPeakBoundary(pixel, -1, corrected, height);
+        int rightBoundary = findPeakBoundary(pixel, 1, corrected, height);
 
-        double halfHeight = baseline + height / 2;
-        int leftHalf = findHalfHeightBoundary(pixel, -1, data, halfHeight);
-        int rightHalf = findHalfHeightBoundary(pixel, 1, data, halfHeight);
-        double width = rightHalf - leftHalf;
+        double halfHeight = height / 2;
+        double leftHalf = findHalfHeightBoundary(pixel, -1, corrected, halfHeight);
+        double rightHalf = findHalfHeightBoundary(pixel, 1, corrected, halfHeight);
+        double fwhm = rightHalf - leftHalf;
 
-        double area = calculatePeakArea(pixel, leftBoundary, rightBoundary, data, baseline);
+        double area = calculatePeakArea(leftBoundary, rightBoundary, corrected);
+        PeakFittingService.FitResult gaussian = fittingService.fitPeakWithQuality(
+                corrected, pixel, new PeakFittingService.GaussianFunction(), peakWindow
+        );
+        PeakFittingService.FitResult lorentzian = fittingService.fitPeakWithQuality(
+                corrected, pixel, new PeakFittingService.LorentzianFunction(), peakWindow
+        );
+        String bestFit = gaussian.rSquared() >= lorentzian.rSquared() ? "Gaussian" : "Lorentzian";
 
-        return new Peak(pixel, intensity, height, width, area, leftBoundary, rightBoundary, baseline, baseline);
+        return new Peak(pixel, intensity, height, fwhm, area, leftBoundary, rightBoundary,
+                baseline[leftBoundary], baseline[rightBoundary], fwhm,
+                gaussian.rSquared(), lorentzian.rSquared(), bestFit);
     }
 
-    private int findPeakBoundary(int startPixel, int direction, double[] data, double baseline, double peakHeight) {
+    private int findPeakBoundary(int startPixel, int direction, double[] data, double peakHeight) {
         int pixel = startPixel + direction;
-        double threshold = baseline + peakHeight * 0.1;
+        double threshold = peakHeight * 0.1;
 
         while (pixel > 0 && pixel < data.length - 1) {
             if (data[pixel] <= threshold) {
@@ -71,25 +84,34 @@ public class PeakDetectionService {
         return pixel;
     }
 
-    private int findHalfHeightBoundary(int startPixel, int direction, double[] data, double halfHeight) {
+    private double findHalfHeightBoundary(int startPixel, int direction, double[] data, double halfHeight) {
         int pixel = startPixel + direction;
+        int previous = startPixel;
 
         while (pixel > 0 && pixel < data.length - 1) {
             if (data[pixel] <= halfHeight) {
-                return pixel;
+                return interpolateX(previous, pixel, data[previous], data[pixel], halfHeight);
             }
+            previous = pixel;
             pixel += direction;
         }
 
         return pixel;
     }
 
-    private double calculatePeakArea(int centerPixel, int leftBoundary, int rightBoundary, double[] data, double baseline) {
+    private double interpolateX(int x1, int x2, double y1, double y2, double targetY) {
+        if (y1 == y2) {
+            return x2;
+        }
+        return x1 + (targetY - y1) * (x2 - x1) / (y2 - y1);
+    }
+
+    private double calculatePeakArea(int leftBoundary, int rightBoundary, double[] data) {
         double area = 0;
 
         for (int i = leftBoundary; i <= rightBoundary; i++) {
             if (i >= 0 && i < data.length) {
-                double intensity = data[i] - baseline;
+                double intensity = data[i];
                 if (intensity > 0) {
                     area += intensity;
                 }
@@ -97,6 +119,23 @@ public class PeakDetectionService {
         }
 
         return area;
+    }
+
+    public double[] applySavitzkyGolay(double[] data) {
+        double[] smoothed = data.clone();
+        if (data.length < 5) {
+            return smoothed;
+        }
+
+        for (int i = 2; i < data.length - 2; i++) {
+            smoothed[i] = (-3 * data[i - 2]
+                    + 12 * data[i - 1]
+                    + 17 * data[i]
+                    + 12 * data[i + 1]
+                    - 3 * data[i + 2]) / 35.0;
+        }
+
+        return smoothed;
     }
 
     public double[] calculateBaseline(double[] data) {
@@ -117,7 +156,7 @@ public class PeakDetectionService {
             baseline[i] = min;
         }
 
-        return baseline;
+        return applyMovingAverage(baseline, Math.max(3, window / 2));
     }
 
     public double[] applyBaselineCorrection(double[] data, double[] baseline) {
@@ -128,6 +167,22 @@ public class PeakDetectionService {
         }
 
         return corrected;
+    }
+
+    private double[] applyMovingAverage(double[] data, int window) {
+        double[] smoothed = new double[data.length];
+
+        for (int i = 0; i < data.length; i++) {
+            int start = Math.max(0, i - window);
+            int end = Math.min(data.length - 1, i + window);
+            double sum = 0;
+            for (int j = start; j <= end; j++) {
+                sum += data[j];
+            }
+            smoothed[i] = sum / (end - start + 1);
+        }
+
+        return smoothed;
     }
 
     public double getPeakThreshold() { return peakThreshold; }
