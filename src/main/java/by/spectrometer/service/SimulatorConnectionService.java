@@ -242,9 +242,27 @@ public class SimulatorConnectionService extends ConnectionService {
             try {
                 simulationTemplate = SimulationTemplate.valueOf(templateName);
                 LogService.log("Simulator template: " + simulationTemplate);
+                logReferenceLines(simulationTemplate);
             } catch (IllegalArgumentException e) {
                 LogService.log("Unknown simulator template: " + templateName);
             }
         }
+    }
+
+    private void logReferenceLines(SimulationTemplate template) {
+        double[] lines = template.getReferenceLinesNm();
+        if (lines.length == 0) {
+            LogService.log("Simulator template has no reference calibration lines");
+            return;
+        }
+
+        StringBuilder message = new StringBuilder("Reference lines/minima: ");
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) {
+                message.append(", ");
+            }
+            message.append(String.format("%.2f nm", lines[i]));
+        }
+        LogService.log(message.toString());
     }
 }

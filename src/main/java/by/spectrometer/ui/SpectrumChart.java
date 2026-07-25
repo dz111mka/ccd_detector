@@ -21,6 +21,7 @@ import javafx.scene.input.MouseEvent;
 
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 public class SpectrumChart extends LineChart<Number, Number> {
 
@@ -36,10 +37,13 @@ public class SpectrumChart extends LineChart<Number, Number> {
     private final Series<Number, Number> minimaSeries = new Series<>();
     private final Series<Number, Number> peaksSeries = new Series<>();
     private final Series<Number, Number> baselineSeries = new Series<>();
+    private final double[] xValues = new double[PIXEL_COUNT];
 
     private boolean showAbsorbance = false;
     private boolean frozen = false;
     private boolean transmissionMode = false;
+    private boolean wavelengthCalibrated = false;
+    private Consumer<Integer> calibrationPixelSelectionHandler;
 
     // ────────────────────────────────────────────────────────────────
     // Managers
@@ -102,6 +106,16 @@ public class SpectrumChart extends LineChart<Number, Number> {
         return zoomManager.isZoomMode();
     }
 
+    public void setOnCalibrationPixelSelected(Consumer<Integer> handler) {
+        this.calibrationPixelSelectionHandler = handler;
+    }
+
+    public void selectCalibrationPixel(int pixel) {
+        if (calibrationPixelSelectionHandler != null) {
+            calibrationPixelSelectionHandler.accept(pixel);
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Инициализация осей
     // ────────────────────────────────────────────────────────────────
@@ -130,7 +144,8 @@ public class SpectrumChart extends LineChart<Number, Number> {
         getData().add(spectrumSeries);
 
         for (int pixel = 0; pixel < PIXEL_COUNT; pixel++) {
-            spectrumPoints.add(new Data<>(pixel, 0.0));
+            xValues[pixel] = pixel;
+            spectrumPoints.add(new Data<>(xValues[pixel], 0.0));
         }
 
         spectrumSeries.setData(spectrumPoints);
@@ -187,7 +202,8 @@ public class SpectrumChart extends LineChart<Number, Number> {
         double xValue = xAxis.getValueForDisplay(p.getX()).doubleValue();
         double yValue = yAxis.getValueForDisplay(p.getY()).doubleValue();
 
-        String tooltipText = String.format("X: %.2f\nY: %.2f", xValue, yValue);
+        String tooltipText = String.format("%s: %.2f%s\nY: %.2f",
+                getXAxisDisplayName(), xValue, getXAxisUnitSuffix(), yValue);
         coordinateTooltip.setText(tooltipText);
 
         coordinateTooltip.show(this, e.getScreenX() + 10, e.getScreenY() + 10);
@@ -204,13 +220,14 @@ public class SpectrumChart extends LineChart<Number, Number> {
         boolean useAbs = showAbsorbance && data.hasDark && data.hasRef;
 
         Platform.runLater(() -> {
+            updateXValues(data);
             spectrumSeries.getData().clear();
             ObservableList<XYChart.Data<Number, Number>> newPoints = FXCollections.observableArrayList();
 
             for (int i = 0; i < PIXEL_COUNT; i++) {
                 double y = computeYValue(data, i, useAbs);
                 // НЕ умножаем на 100 здесь - ось сама покажет проценты
-                newPoints.add(new XYChart.Data<>(i, y));
+                newPoints.add(new XYChart.Data<>(getXValueForPixel(i), y));
             }
 
             spectrumSeries.setData(newPoints);
@@ -289,12 +306,13 @@ public class SpectrumChart extends LineChart<Number, Number> {
         boolean useAbs = showAbsorbance && data.hasDark && data.hasRef;
 
         Platform.runLater(() -> {
+            updateXValues(data);
             ObservableList<XYChart.Data<Number, Number>> newPoints = FXCollections.observableArrayList();
 
             for (int i = 0; i < PIXEL_COUNT; i++) {
                 double y = computeYValue(data, i, useAbs);
                 // НЕ умножаем на 100
-                newPoints.add(new XYChart.Data<>(i, y));
+                newPoints.add(new XYChart.Data<>(getXValueForPixel(i), y));
             }
 
             spectrumSeries.setData(newPoints);
@@ -304,6 +322,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
     public void capture(SpectrumData data) {
         frozen = true;
         double[] capturedData = new double[PIXEL_COUNT];
+        updateXValues(data);
         dataProcessor.clearMinima();
         for (int i = 0; i < PIXEL_COUNT; i++) {
             double y = computeYValue(data, i, false);
@@ -324,7 +343,7 @@ public class SpectrumChart extends LineChart<Number, Number> {
             ObservableList<XYChart.Data<Number, Number>> pts = FXCollections.observableArrayList();
             for (int i = 0; i < PIXEL_COUNT; i++) {
                 // НЕ умножаем на 100 - данные уже в правильном диапазоне
-                pts.add(new XYChart.Data<>(i, y[i]));
+                pts.add(new XYChart.Data<>(getXValueForPixel(i), y[i]));
             }
             spectrumSeries.setData(pts);
 
@@ -387,6 +406,59 @@ public class SpectrumChart extends LineChart<Number, Number> {
             lookupAll(".chart-horizontal-grid-lines").forEach(node -> node.setStyle(visibility));
             lookupAll(".chart-vertical-grid-lines").forEach(node -> node.setStyle(visibility));
         });
+    }
+
+    public double getXValueForPixel(int pixel) {
+        if (pixel < 0 || pixel >= xValues.length) {
+            return pixel;
+        }
+        return xValues[pixel];
+    }
+
+    public void refreshXAxis(SpectrumData data) {
+        updateXValues(data);
+        if (frozen && dataProcessor.getCapturedY() != null) {
+            redrawFromArray(dataProcessor.getCapturedY());
+        } else {
+            forceRedraw(data);
+        }
+    }
+
+    public String formatXValueForPixel(int pixel) {
+        double value = getXValueForPixel(pixel);
+        if (wavelengthCalibrated) {
+            return String.format("%.2f nm (pixel %d)", value, pixel);
+        }
+        return String.format("pixel %d", pixel);
+    }
+
+    public boolean isWavelengthCalibrated() {
+        return wavelengthCalibrated;
+    }
+
+    private void updateXValues(SpectrumData data) {
+        wavelengthCalibrated = data.wavelengthCalibrated
+                && data.wavelength[PIXEL_COUNT - 1] > data.wavelength[0];
+
+        for (int i = 0; i < PIXEL_COUNT; i++) {
+            xValues[i] = wavelengthCalibrated ? data.wavelength[i] : i;
+        }
+
+        NumberAxis xAxis = (NumberAxis) getXAxis();
+        xAxis.setLabel(wavelengthCalibrated ? "Wavelength (nm)" : "Pixel");
+        xAxis.setTickUnit(wavelengthCalibrated ? 250 : 500);
+        if (!zoomManager.isZoomMode()) {
+            xAxis.setLowerBound(xValues[0]);
+            xAxis.setUpperBound(xValues[PIXEL_COUNT - 1]);
+        }
+    }
+
+    private String getXAxisDisplayName() {
+        return wavelengthCalibrated ? "Wavelength" : "Pixel";
+    }
+
+    private String getXAxisUnitSuffix() {
+        return wavelengthCalibrated ? " nm" : "";
     }
 
     // ────────────────────────────────────────────────────────────────

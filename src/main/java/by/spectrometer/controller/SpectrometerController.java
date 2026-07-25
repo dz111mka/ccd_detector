@@ -1,12 +1,14 @@
 package by.spectrometer.controller;
 
 import by.spectrometer.manager.*;
+import by.spectrometer.model.CalibrationPoint;
 import by.spectrometer.model.ConnectionState;
 import by.spectrometer.model.ConnectionType;
 import by.spectrometer.model.SimulationTemplate;
 import by.spectrometer.model.SpectrumData;
 import by.spectrometer.service.ExportService;
 import by.spectrometer.service.LogService;
+import by.spectrometer.service.WavelengthCalibrationService;
 import by.spectrometer.ui.SpectrumChart;
 import by.spectrometer.ui.builder.SpectrometerUIBuilder;
 import by.spectrometer.util.Constants;
@@ -20,6 +22,9 @@ import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.VBox;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class SpectrometerController {
 
@@ -61,6 +66,11 @@ public class SpectrometerController {
     // comboBox3 equivalent — Capture mode
     private ComboBox<String> cbCaptureMode;
     private ComboBox<SimulationTemplate> cbSimulationTemplate;
+    private ComboBox<Double> cbCalibrationWavelength;
+    private final TextField tfCalibrationPixel = new TextField();
+    private final Button btnAddCalibrationPoint = new Button("Add point");
+    private final Button btnApplyCalibration = new Button("Apply");
+    private final Button btnClearCalibration = new Button("Clear");
 
     // ────────────────────────────────────────────────────────────────
     // Контроллеры для Arduino
@@ -77,6 +87,8 @@ public class SpectrometerController {
     private final ThemeManager themeManager;
     private final ConfigurationManager configManager;
     private final ExportManager exportManager;
+    private final WavelengthCalibrationService wavelengthCalibrationService = new WavelengthCalibrationService();
+    private final List<CalibrationPoint> calibrationPoints = new ArrayList<>();
 
     // ────────────────────────────────────────────────────────────────
     // Внутреннее состояние
@@ -108,13 +120,16 @@ public class SpectrometerController {
         cbIntegrationTime = uiBuilder.createIntegrationTimeComboBox();
         cbCaptureMode = uiBuilder.createCaptureModeComboBox();
         cbSimulationTemplate = uiBuilder.createSimulationTemplateComboBox();
+        cbCalibrationWavelength = uiBuilder.createCalibrationWavelengthComboBox();
 
         view = uiBuilder.buildMainLayout(menuBar,
                 uiBuilder.buildConnectionPanel(cbConnectionType, tfAddress, cbSerialPorts, btnConnect, lblStatus),
                 uiBuilder.buildMeasurementControls(btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks,
                         btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle, tfPeakThreshold, tfPeakWindow,
                         btnTransmissionMode, btnClearBuffers),
-                uiBuilder.buildExposureRow(cbIntegrationTime, cbCaptureMode, cbSimulationTemplate),
+                uiBuilder.buildExposureRow(cbIntegrationTime, cbCaptureMode, cbSimulationTemplate,
+                        tfCalibrationPixel, cbCalibrationWavelength, btnAddCalibrationPoint,
+                        btnApplyCalibration, btnClearCalibration),
                 chart, logView, arduinoConnectionController, stepperMotorController);
         themeManager = new ThemeManager(this, view, menuBar);
         initializeUI();
@@ -220,6 +235,14 @@ public class SpectrometerController {
     private void setupBindings() {
         bindConnectionStatus();
         bindLogAutoScroll();
+        bindCalibrationPixelSelection();
+    }
+
+    private void bindCalibrationPixelSelection() {
+        chart.setOnCalibrationPixelSelected(pixel -> {
+            tfCalibrationPixel.setText(String.valueOf(pixel));
+            LogService.log("Calibration pixel selected: " + pixel);
+        });
     }
 
     private void bindConnectionStatus() {
@@ -276,7 +299,13 @@ public class SpectrometerController {
 
         // comboBox2 equivalent — send INT_n command on selection change
         cbIntegrationTime.setOnAction(e -> sendIntegrationTime());
-        cbSimulationTemplate.setOnAction(e -> sendSimulationTemplate());
+        cbSimulationTemplate.setOnAction(e -> {
+            sendSimulationTemplate();
+            updateCalibrationReferenceLines();
+        });
+        btnAddCalibrationPoint.setOnAction(e -> addCalibrationPoint());
+        btnApplyCalibration.setOnAction(e -> applyWavelengthCalibration());
+        btnClearCalibration.setOnAction(e -> clearWavelengthCalibration());
     }
 
     /**
@@ -312,6 +341,66 @@ public class SpectrometerController {
         LogService.log("Шаблон симуляции → " + template);
     }
 
+    private void updateCalibrationReferenceLines() {
+        SimulationTemplate template = cbSimulationTemplate.getValue();
+        cbCalibrationWavelength.getItems().clear();
+
+        if (template == null) {
+            return;
+        }
+
+        for (double line : template.getReferenceLinesNm()) {
+            cbCalibrationWavelength.getItems().add(line);
+        }
+
+        if (!cbCalibrationWavelength.getItems().isEmpty()) {
+            cbCalibrationWavelength.setValue(cbCalibrationWavelength.getItems().getFirst());
+        }
+    }
+
+    private void addCalibrationPoint() {
+        try {
+            double pixel = Double.parseDouble(tfCalibrationPixel.getText().trim().replace(',', '.'));
+            Double wavelength = readCalibrationWavelength();
+
+            if (wavelength == null) {
+                LogService.log("Укажите известную длину волны для точки градуировки.");
+                return;
+            }
+
+            calibrationPoints.add(new CalibrationPoint(pixel, wavelength));
+            LogService.log(String.format("Calibration point added: pixel %.2f → %.2f nm (%d total)",
+                    pixel, wavelength, calibrationPoints.size()));
+        } catch (NumberFormatException e) {
+            LogService.log("Ошибка градуировки: pixel и nm должны быть числами.");
+        }
+    }
+
+    private Double readCalibrationWavelength() {
+        String text = cbCalibrationWavelength.getEditor().getText();
+        if (text != null && !text.isBlank()) {
+            return Double.parseDouble(text.trim().replace(',', '.'));
+        }
+        return cbCalibrationWavelength.getValue();
+    }
+
+    private void applyWavelengthCalibration() {
+        try {
+            wavelengthCalibrationService.applyPiecewiseLinearCalibration(data, calibrationPoints);
+            chart.refreshXAxis(data);
+            LogService.log("Wavelength calibration applied: " + calibrationPoints.size() + " points");
+        } catch (IllegalArgumentException e) {
+            LogService.log("Ошибка градуировки: " + e.getMessage());
+        }
+    }
+
+    private void clearWavelengthCalibration() {
+        calibrationPoints.clear();
+        wavelengthCalibrationService.clearCalibration(data);
+        chart.refreshXAxis(data);
+        LogService.log("Wavelength calibration cleared. X axis returned to pixels.");
+    }
+
     private void setupLogEventHandlers() {
         logView.setOnKeyPressed(this::handleLogKeyPress);
     }
@@ -338,6 +427,7 @@ public class SpectrometerController {
         configManager.loadConnectionConfiguration(cbConnectionType, tfAddress);
         connectionManager.handleConnectionTypeChange(cbConnectionType, cbSerialPorts, tfAddress);
         updateSimulationTemplateVisibility();
+        updateCalibrationReferenceLines();
     }
 
     private void updateSimulationTemplateVisibility() {

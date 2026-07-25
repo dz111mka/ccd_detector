@@ -12,6 +12,7 @@ import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.util.StringConverter;
 
 public class SpectrometerUIBuilder {
 
@@ -124,20 +125,39 @@ public class SpectrometerUIBuilder {
      * @return VBox containing the labeled HBox row (can be embedded directly in parent layout)
      */
     public VBox buildExposureRow(ComboBox<String> cbIntegrationTime, ComboBox<String> cbCaptureMode,
-                                 ComboBox<SimulationTemplate> cbSimulationTemplate) {
+                                 ComboBox<SimulationTemplate> cbSimulationTemplate,
+                                 TextField tfCalibrationPixel,
+                                 ComboBox<Double> cbCalibrationWavelength,
+                                 Button btnAddCalibrationPoint,
+                                 Button btnApplyCalibration,
+                                 Button btnClearCalibration) {
         cbIntegrationTime.setPrefWidth(120);
         cbCaptureMode.setPrefWidth(150);
         cbSimulationTemplate.setPrefWidth(260);
+        tfCalibrationPixel.setPrefWidth(90);
+        cbCalibrationWavelength.setPrefWidth(130);
 
-        HBox row = new HBox(12);
-        row.setAlignment(Pos.CENTER_LEFT);
-        row.setPadding(new Insets(4, 0, 0, 0));
-        row.getChildren().addAll(
+        HBox exposureRow = new HBox(12);
+        exposureRow.setAlignment(Pos.CENTER_LEFT);
+        exposureRow.setPadding(new Insets(4, 0, 0, 0));
+        exposureRow.getChildren().addAll(
                 new Label("Интеграция:"), cbIntegrationTime,
                 new Label("Режим сбора:"), cbCaptureMode,
                 new Label("Симуляция:"), cbSimulationTemplate
         );
-        return new VBox(row);
+
+        HBox calibrationRow = new HBox(8);
+        calibrationRow.setAlignment(Pos.CENTER_LEFT);
+        calibrationRow.getChildren().addAll(
+                new Label("Градуировка: pixel"), tfCalibrationPixel,
+                new Label("→ nm"), cbCalibrationWavelength,
+                btnAddCalibrationPoint,
+                btnApplyCalibration,
+                btnClearCalibration
+        );
+
+        VBox rows = new VBox(6, exposureRow, calibrationRow);
+        return rows;
     }
 
     /**
@@ -181,6 +201,27 @@ public class SpectrometerUIBuilder {
         ComboBox<SimulationTemplate> cb = new ComboBox<>();
         cb.getItems().addAll(SimulationTemplate.values());
         cb.setValue(SimulationTemplate.CHLOROPHYLL_VISIBLE);
+        return cb;
+    }
+
+    public ComboBox<Double> createCalibrationWavelengthComboBox() {
+        ComboBox<Double> cb = new ComboBox<>();
+        cb.setEditable(true);
+        cb.setPromptText("nm");
+        cb.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Double value) {
+                return value == null ? "" : String.format("%.2f", value);
+            }
+
+            @Override
+            public Double fromString(String value) {
+                if (value == null || value.isBlank()) {
+                    return null;
+                }
+                return Double.parseDouble(value.trim().replace(',', '.'));
+            }
+        });
         return cb;
     }
 

@@ -53,8 +53,8 @@ public class MeasurementManager {
 
             for (Peak peak : peaks) {
                 LogService.log(String.format(
-                        "Пик %d: высота=%.2f, FWHM=%.2f, площадь=%.2f, fit=%s, Gaussian R²=%.3f, Lorentzian R²=%.3f",
-                        peak.pixel(), peak.height(), peak.fwhm(), peak.area(), peak.bestFit(),
+                        "Пик %s: высота=%.2f, FWHM=%.2f, площадь=%.2f, fit=%s, Gaussian R²=%.3f, Lorentzian R²=%.3f",
+                        chart.formatXValueForPixel(peak.pixel()), peak.height(), peak.fwhm(), peak.area(), peak.bestFit(),
                         peak.gaussianR2(), peak.lorentzianR2()));
             }
         } catch (NumberFormatException e) {
@@ -131,8 +131,8 @@ public class MeasurementManager {
     private void logMinimaDetails(List<Integer> minima) {
         for (int idx : minima) {
             double yValue = chart.getCapturedY() != null ? chart.getCapturedY()[idx] : 0;
-            LogService.log(String.format("  Pixel %d: Y=%.2f, RawValue=%.2f",
-                    idx, yValue, 4095 - yValue));
+            LogService.log(String.format("  %s: Y=%.2f, RawValue=%.2f",
+                    chart.formatXValueForPixel(idx), yValue, 4095 - yValue));
         }
     }
 

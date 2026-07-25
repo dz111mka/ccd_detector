@@ -58,7 +58,7 @@ public class ChartPeakController {
             }
 
             for (int i = 0; i < PIXEL_COUNT; i++) {
-                chart.getBaselineSeries().getData().add(new XYChart.Data<>(i, baseline[i]));
+                chart.getBaselineSeries().getData().add(new XYChart.Data<>(chart.getXValueForPixel(i), baseline[i]));
             }
         });
     }
@@ -68,7 +68,7 @@ public class ChartPeakController {
             chart.getPeaksSeries().getData().clear();
 
             for (Peak peak : peaks) {
-                XYChart.Data<Number, Number> point = new XYChart.Data<>(peak.pixel(), chart.getCapturedY()[peak.pixel()]);
+                XYChart.Data<Number, Number> point = new XYChart.Data<>(chart.getXValueForPixel(peak.pixel()), chart.getCapturedY()[peak.pixel()]);
                 point.setNode(createPeakMarker(peak));
                 chart.getPeaksSeries().getData().add(point);
             }
@@ -90,10 +90,14 @@ public class ChartPeakController {
                 """);
 
         Tooltip.install(marker, new Tooltip(String.format(
-                "Peak\nPixel: %d\nHeight: %.2f\nFWHM: %.2f\nArea: %.2f\nBest fit: %s\nGaussian R²: %.3f\nLorentzian R²: %.3f",
-                peak.pixel(), peak.height(), peak.fwhm(), peak.area(), peak.bestFit(),
+                "Peak\n%s\nHeight: %.2f\nFWHM: %.2f\nArea: %.2f\nBest fit: %s\nGaussian R²: %.3f\nLorentzian R²: %.3f",
+                chart.formatXValueForPixel(peak.pixel()), peak.height(), peak.fwhm(), peak.area(), peak.bestFit(),
                 peak.gaussianR2(), peak.lorentzianR2()
         )));
+        marker.setOnMouseClicked(event -> {
+            chart.selectCalibrationPixel(peak.pixel());
+            event.consume();
+        });
         return marker;
     }
 

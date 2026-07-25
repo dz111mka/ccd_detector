@@ -5,6 +5,8 @@ import by.spectrometer.ui.SpectrumChart;
 import by.spectrometer.util.Constants;
 import javafx.scene.chart.XYChart;
 import javafx.application.Platform;
+import javafx.scene.control.Tooltip;
+import javafx.scene.layout.StackPane;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -93,28 +95,9 @@ public class ChartDataProcessor {
 
             for (int idx : minima) {
                 if (idx >= 0 && idx < capturedY.length) {
-                    XYChart.Data<Number, Number> point = new XYChart.Data<>(idx, capturedY[idx]);
+                    XYChart.Data<Number, Number> point = new XYChart.Data<>(chart.getXValueForPixel(idx), capturedY[idx]);
+                    point.setNode(createMinimaMarker(idx, capturedY[idx]));
                     chart.getMinimaSeries().getData().add(point);
-
-                    point.setExtraValue(new Object());
-
-                    point.nodeProperty().addListener((obs, oldNode, newNode) -> {
-                        if (newNode != null) {
-                            newNode.setStyle("""
-                                -fx-background-color: red;
-                                -fx-background-radius: 5px;
-                                -fx-padding: 5px;
-                                -fx-border-color: white;
-                                -fx-border-width: 2px;
-                                -fx-border-radius: 5px;
-                                -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);
-                            """);
-
-                            javafx.scene.control.Tooltip tooltip = new javafx.scene.control.Tooltip(String.format("Pixel: %d\nValue: %.2f\nRaw: %.2f",
-                                    idx, capturedY[idx], 4095 - capturedY[idx]));
-                            javafx.scene.control.Tooltip.install(newNode, tooltip);
-                        }
-                    });
                 }
             }
 
@@ -122,6 +105,31 @@ public class ChartDataProcessor {
                 chart.getMinimaSeries().getNode().requestFocus();
             }
         });
+    }
+
+    private StackPane createMinimaMarker(int pixel, double value) {
+        StackPane marker = new StackPane();
+        marker.setMinSize(12, 12);
+        marker.setPrefSize(12, 12);
+        marker.setMaxSize(12, 12);
+        marker.setStyle("""
+                -fx-background-color: #ff3b30;
+                -fx-background-radius: 6px;
+                -fx-border-color: white;
+                -fx-border-width: 2px;
+                -fx-border-radius: 6px;
+                -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.85), 6, 0, 0, 1);
+                """);
+
+        Tooltip.install(marker, new Tooltip(String.format(
+                "Minimum\n%s\nValue: %.2f\nRaw: %.2f",
+                chart.formatXValueForPixel(pixel), value, 4095 - value
+        )));
+        marker.setOnMouseClicked(event -> {
+            chart.selectCalibrationPixel(pixel);
+            event.consume();
+        });
+        return marker;
     }
 
     public void clearMinima() {
@@ -159,7 +167,7 @@ public class ChartDataProcessor {
             chart.getSpectrumSeries().getData().clear();
             javafx.collections.ObservableList<XYChart.Data<Number, Number>> pts = javafx.collections.FXCollections.observableArrayList();
             for (int i = 0; i < PIXEL_COUNT; i++) {
-                pts.add(new XYChart.Data<>(i, y[i]));
+                pts.add(new XYChart.Data<>(chart.getXValueForPixel(i), y[i]));
             }
             chart.getSpectrumSeries().setData(pts);
 
