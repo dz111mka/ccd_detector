@@ -2,6 +2,7 @@ package by.spectrometer.ui.manager;
 
 import by.spectrometer.service.LogService;
 import by.spectrometer.ui.SpectrumChart;
+import by.spectrometer.util.Constants;
 import javafx.scene.chart.XYChart;
 import javafx.application.Platform;
 
@@ -30,6 +31,7 @@ public class ChartDataProcessor {
             return minima;
         }
 
+        double minProminence = calculateMinProminence();
         for (int i = window; i < PIXEL_COUNT - window; i++) {
             double v = capturedY[i];
             boolean isMin = true;
@@ -41,7 +43,7 @@ public class ChartDataProcessor {
                 }
             }
 
-            if (isMin && v < threshold) {
+            if (isMin && v < threshold && hasEnoughProminence(i, window, minProminence)) {
                 minima.add(i);
             }
         }
@@ -50,6 +52,39 @@ public class ChartDataProcessor {
         hasMinima = !minima.isEmpty();
         drawMinimaMarkers();
         return minima;
+    }
+
+    private double calculateMinProminence() {
+        double min = Double.MAX_VALUE;
+        double max = -Double.MAX_VALUE;
+
+        for (double value : capturedY) {
+            min = Math.min(min, value);
+            max = Math.max(max, value);
+        }
+
+        return Math.max(Constants.MINIMA_MIN_PROMINENCE, (max - min) * 0.05);
+    }
+
+    private boolean hasEnoughProminence(int index, int window, double minProminence) {
+        double value = capturedY[index];
+        double leftMax = maxInRange(index - window, index - 1);
+        double rightMax = maxInRange(index + 1, index + window);
+        double localProminence = Math.min(leftMax, rightMax) - value;
+
+        return localProminence >= minProminence;
+    }
+
+    private double maxInRange(int start, int end) {
+        double max = -Double.MAX_VALUE;
+        int safeStart = Math.max(0, start);
+        int safeEnd = Math.min(capturedY.length - 1, end);
+
+        for (int i = safeStart; i <= safeEnd; i++) {
+            max = Math.max(max, capturedY[i]);
+        }
+
+        return max;
     }
 
     public void drawMinimaMarkers() {

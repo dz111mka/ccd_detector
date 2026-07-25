@@ -81,7 +81,10 @@ public class MeasurementManager {
         logCapturedDataRange();
 
         chart.clearMinima();
-        List<Integer> minima = chart.findLocalMinima(50, 3000);
+        List<Integer> minima = chart.findLocalMinima(
+                Constants.MINIMA_SEARCH_WINDOW,
+                Constants.MINIMA_INTENSITY_THRESHOLD
+        );
 
         LogService.log("Minimums found: " + minima.size());
         if (minima.isEmpty()) {
@@ -113,7 +116,7 @@ public class MeasurementManager {
     private void searchWithDifferentThresholds() {
         double[] thresholds = {1000, 1500, 2000, 2500, 3000, 3500};
         for (double threshold : thresholds) {
-            List<Integer> minima = chart.findLocalMinima(50, threshold);
+            List<Integer> minima = chart.findLocalMinima(Constants.MINIMA_SEARCH_WINDOW, threshold);
             LogService.log(String.format("  Threshold %.0f: found %d minima", threshold, minima.size()));
             if (!minima.isEmpty()) {
                 chart.clearMinima();

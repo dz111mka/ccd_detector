@@ -13,6 +13,9 @@ public class Constants {
     public static final int FINE_ADJUSTMENT_MIN = -45;
     public static final int FINE_ADJUSTMENT_MAX = 45;
     public static final int SMOOTHING_WINDOW_SIZE = 5;
+    public static final int MINIMA_SEARCH_WINDOW = 50;
+    public static final double MINIMA_INTENSITY_THRESHOLD = 3000;
+    public static final double MINIMA_MIN_PROMINENCE = 150;
     public static final int TRANSMISSION_BUFFER_FRAMES = 10;
 
     // ────────────────────────────────────────────────────────────────
