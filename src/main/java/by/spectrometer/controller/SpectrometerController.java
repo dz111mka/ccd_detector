@@ -320,6 +320,7 @@ public class SpectrometerController {
 
     private void loadConfiguration() {
         configManager.loadConnectionConfiguration(cbConnectionType, tfAddress);
+        connectionManager.handleConnectionTypeChange(cbConnectionType, cbSerialPorts, tfAddress);
     }
 
     private void loadThemeConfiguration() {

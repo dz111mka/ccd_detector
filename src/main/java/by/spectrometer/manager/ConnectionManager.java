@@ -7,6 +7,7 @@ import by.spectrometer.model.SpectrumData;
 import by.spectrometer.service.ConnectionService;
 import by.spectrometer.service.LogService;
 import by.spectrometer.service.SerialConnectionService;
+import by.spectrometer.service.SimulatorConnectionService;
 import by.spectrometer.service.WebSocketConnectionService;
 import com.fazecast.jSerialComm.SerialPort;
 import javafx.scene.control.ComboBox;
@@ -47,12 +48,18 @@ public class ConnectionManager {
                                            ComboBox<String> cbSerialPorts, TextField tfAddress) {
         currentConnectionType = cbConnectionType.getValue();
         boolean isSerial = currentConnectionType == ConnectionType.SERIAL;
+        boolean isWebSocket = currentConnectionType == ConnectionType.WEBSOCKET;
 
         cbSerialPorts.setVisible(isSerial);
-        tfAddress.setVisible(!isSerial);
+        cbSerialPorts.setManaged(isSerial);
+        tfAddress.setVisible(isWebSocket);
+        tfAddress.setManaged(isWebSocket);
 
-        String prompt = isSerial ? "Выберите COM порт"
-                : "ws://IP:порт (например: 192.168.1.77:81)";
+        String prompt = switch (currentConnectionType) {
+            case SERIAL -> "Выберите COM порт";
+            case WEBSOCKET -> "ws://IP:порт (например: 192.168.1.77:81)";
+            case SIMULATOR -> "Симулятор не требует адреса";
+        };
         tfAddress.setPromptText(prompt);
     }
 
@@ -77,6 +84,7 @@ public class ConnectionManager {
         return switch (currentConnectionType) {
             case SERIAL -> getSelectedSerialPort(cbSerialPorts, lblStatus);
             case WEBSOCKET -> getWebSocketAddress(tfAddress);
+            case SIMULATOR -> "simulator";
         };
     }
 
@@ -98,6 +106,7 @@ public class ConnectionManager {
         return switch (currentConnectionType) {
             case SERIAL -> new SerialConnectionService(data, connState, controller::updateChart);
             case WEBSOCKET -> new WebSocketConnectionService(data, connState, controller::updateChart);
+            case SIMULATOR -> new SimulatorConnectionService(data, connState, controller::updateChart);
         };
     }
 
@@ -127,6 +136,7 @@ public class ConnectionManager {
         ConnectionType type = ConnectionType.valueOf(
                 prefs.get("connectionType", "WEBSOCKET")
         );
+        currentConnectionType = type;
         cbConnectionType.setValue(type);
 
         if (type == ConnectionType.WEBSOCKET) {

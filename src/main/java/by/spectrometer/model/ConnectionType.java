@@ -2,7 +2,8 @@ package by.spectrometer.model;
 
 public enum ConnectionType {
     WEBSOCKET("WebSocket"),
-    SERIAL("Serial");
+    SERIAL("Serial"),
+    SIMULATOR("Simulator");
 
     private final String displayName;
 
