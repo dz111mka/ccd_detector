@@ -48,11 +48,11 @@ public class SpectrometerUIBuilder {
 
         CheckMenuItem showGrid = new CheckMenuItem("Показать сетку");
         showGrid.setSelected(true);
-        showGrid.setOnAction(e -> { /* TODO */ });
+        showGrid.setOnAction(e -> controller.getChart().setGridVisible(showGrid.isSelected()));
 
         CheckMenuItem showLegend = new CheckMenuItem("Показать легенду");
         showLegend.setSelected(true);
-        showLegend.setOnAction(e -> { /* TODO */ });
+        showLegend.setOnAction(e -> controller.getChart().setLegendVisible(showLegend.isSelected()));
 
         CheckMenuItem darkTheme = new CheckMenuItem("Тёмная тема");
         darkTheme.setOnAction(e -> controller.toggleTheme());

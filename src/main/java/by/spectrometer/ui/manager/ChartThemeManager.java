@@ -4,9 +4,9 @@ import by.spectrometer.ui.SpectrumChart;
 import by.spectrometer.util.Constants;
 import javafx.application.Platform;
 import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.chart.NumberAxis;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
+import javafx.scene.control.Label;
 
 import java.util.Set;
 
@@ -67,7 +67,37 @@ public class ChartThemeManager {
             updateMinimaSeriesStyle(isDarkTheme);
             updatePeaksSeriesStyle(isDarkTheme);
             updateBaselineSeriesStyle(isDarkTheme);
+            updateLegendStyle(isDarkTheme);
         });
+    }
+
+    private void updateLegendStyle(boolean isDarkTheme) {
+        String legendBg = isDarkTheme ? Constants.DarkTheme.PANEL_BACKGROUND : Constants.LightTheme.PANEL_BACKGROUND;
+        String textColor = isDarkTheme ? Constants.DarkTheme.TEXT_COLOR : Constants.LightTheme.TEXT_COLOR;
+        String borderColor = isDarkTheme ? Constants.DarkTheme.BORDER_COLOR : Constants.LightTheme.BORDER_COLOR;
+
+        Node legend = chart.lookup(".chart-legend");
+        if (legend != null) {
+            legend.setStyle("-fx-background-color: " + legendBg + "; " +
+                    "-fx-border-color: " + borderColor + "; " +
+                    "-fx-border-width: 1px; " +
+                    "-fx-padding: 6px;");
+            applyLegendTextColor(legend, textColor);
+        }
+
+        chart.lookupAll(".chart-legend-item").forEach(item ->
+                item.setStyle("-fx-text-fill: " + textColor + ";")
+        );
+    }
+
+    private void applyLegendTextColor(Node node, String textColor) {
+        if (node instanceof Label label) {
+            label.setStyle("-fx-text-fill: " + textColor + ";");
+        }
+
+        if (node instanceof Parent parent) {
+            parent.getChildrenUnmodifiable().forEach(child -> applyLegendTextColor(child, textColor));
+        }
     }
 
     private void updateMinimaSeriesStyle(boolean isDarkTheme) {

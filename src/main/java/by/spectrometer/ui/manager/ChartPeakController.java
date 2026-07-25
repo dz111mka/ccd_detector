@@ -1,6 +1,7 @@
 package by.spectrometer.ui.manager;
 
 import by.spectrometer.model.Peak;
+import by.spectrometer.service.LogService;
 import by.spectrometer.service.PeakDetectionService;
 import by.spectrometer.ui.SpectrumChart;
 import javafx.application.Platform;
@@ -28,7 +29,7 @@ public class ChartPeakController {
         peaks.clear();
 
         if (!chart.isFrozen() || chart.getCapturedY() == null) {
-            System.err.println("The graph is not frozen or there is no captured data!");
+            LogService.log("The graph is not frozen or there is no captured data.");
             return peaks;
         }
 

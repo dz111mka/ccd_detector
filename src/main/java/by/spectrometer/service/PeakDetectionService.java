@@ -7,10 +7,9 @@ import java.util.List;
 
 public class PeakDetectionService {
 
-    // Peak detection parameters
-    private double peakThreshold = 1000; // Minimum height to be considered a peak
-    private int peakWindow = 50; // Window size for local maximum detection
-    private double baselineSmoothing = 50; // Smoothing window for baseline correction
+    private double peakThreshold = 1000;
+    private int peakWindow = 50;
+    private double baselineSmoothing = 50;
 
     public List<Peak> detectPeaks(double[] data, double baseline) {
         List<Peak> peaks = new ArrayList<>();
@@ -23,7 +22,6 @@ public class PeakDetectionService {
                 continue;
             }
 
-            // Check if current point is a local maximum
             for (int j = 1; j <= peakWindow; j++) {
                 double leftIntensity = data[i - j] - baseline;
                 double rightIntensity = data[i + j] - baseline;
@@ -44,20 +42,16 @@ public class PeakDetectionService {
     }
 
     private Peak buildPeak(int pixel, double intensity, double[] data, double baseline) {
-        // Calculate peak height
         double height = data[pixel] - baseline;
 
-        // Find peak boundaries
         int leftBoundary = findPeakBoundary(pixel, -1, data, baseline, height);
         int rightBoundary = findPeakBoundary(pixel, 1, data, baseline, height);
 
-        // Calculate peak width at half height
         double halfHeight = baseline + height / 2;
         int leftHalf = findHalfHeightBoundary(pixel, -1, data, halfHeight);
         int rightHalf = findHalfHeightBoundary(pixel, 1, data, halfHeight);
         double width = rightHalf - leftHalf;
 
-        // Calculate peak area
         double area = calculatePeakArea(pixel, leftBoundary, rightBoundary, data, baseline);
 
         return new Peak(pixel, intensity, height, width, area, leftBoundary, rightBoundary, baseline, baseline);
@@ -65,7 +59,7 @@ public class PeakDetectionService {
 
     private int findPeakBoundary(int startPixel, int direction, double[] data, double baseline, double peakHeight) {
         int pixel = startPixel + direction;
-        double threshold = baseline + peakHeight * 0.1; // 10% of peak height
+        double threshold = baseline + peakHeight * 0.1;
 
         while (pixel > 0 && pixel < data.length - 1) {
             if (data[pixel] <= threshold) {
@@ -136,7 +130,6 @@ public class PeakDetectionService {
         return corrected;
     }
 
-    // Getters and Setters
     public double getPeakThreshold() { return peakThreshold; }
     public void setPeakThreshold(double peakThreshold) { this.peakThreshold = peakThreshold; }
 

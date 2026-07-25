@@ -62,8 +62,8 @@ public class WebSocketConnectionService extends ConnectionService {
             JsonNode json = JsonUtils.MAPPER.readTree(message);
             updateSpectrumData(json);
             Platform.runLater(onNewSpectrum);
-        } catch (Exception ignored) {
-            // Handle parse error
+        } catch (Exception e) {
+            LogService.error("Failed to parse WebSocket spectrum message", e);
         }
     }
 

@@ -381,6 +381,14 @@ public class SpectrumChart extends LineChart<Number, Number> {
         themeManager.applyTheme(isDarkTheme);
     }
 
+    public void setGridVisible(boolean visible) {
+        Platform.runLater(() -> {
+            String visibility = visible ? "" : "-fx-stroke: transparent;";
+            lookupAll(".chart-horizontal-grid-lines").forEach(node -> node.setStyle(visibility));
+            lookupAll(".chart-vertical-grid-lines").forEach(node -> node.setStyle(visibility));
+        });
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Style application
     // ────────────────────────────────────────────────────────────────

@@ -255,7 +255,8 @@ public class SerialConnectionService extends ConnectionService {
             if (port != null && port.isOpen()) {
                 port.closePort();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LogService.error("Error while closing serial connection", e);
         }
 
         Platform.runLater(() -> state.setDisconnected("Disconnected"));

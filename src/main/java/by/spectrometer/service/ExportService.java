@@ -148,7 +148,7 @@ public class ExportService {
         }
     }
 
-    private static PdfPTable createSpectrumGraph(SpectrumData data, double[] capturedY) {
+    private static PdfPTable createSpectrumGraph(SpectrumData data, double[] capturedY) throws IOException {
         int width = 500;
         int height = 200;
         int padding = 30;
@@ -209,13 +209,13 @@ public class ExportService {
         g2d.dispose();
         
         // Convert to iText Image
-        Image chartImage = null;
+        Image chartImage;
         try {
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
             javax.imageio.ImageIO.write(bufferedImage, "png", baos);
             chartImage = Image.getInstance(baos.toByteArray());
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new IOException("Error creating PDF spectrum graph image", e);
         }
         
         // Create table to center image

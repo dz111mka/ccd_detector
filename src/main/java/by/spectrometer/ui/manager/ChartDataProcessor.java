@@ -1,5 +1,6 @@
 package by.spectrometer.ui.manager;
 
+import by.spectrometer.service.LogService;
 import by.spectrometer.ui.SpectrumChart;
 import javafx.scene.chart.XYChart;
 import javafx.application.Platform;
@@ -25,11 +26,9 @@ public class ChartDataProcessor {
     public List<Integer> findLocalMinima(int window, double threshold) {
         minima.clear();
         if (!chart.isFrozen() || capturedY == null) {
-            System.err.println("The graph is not frozen or there is no captured data!");
+            LogService.log("The graph is not frozen or there is no captured data.");
             return minima;
         }
-
-        System.out.println("Finding minima in captured data, length capturedY: " + capturedY.length);
 
         for (int i = window; i < PIXEL_COUNT - window; i++) {
             double v = capturedY[i];
@@ -47,7 +46,7 @@ public class ChartDataProcessor {
             }
         }
 
-        System.out.println("Minimums found: " + minima.size());
+        LogService.log("Minimums found: " + minima.size());
         hasMinima = !minima.isEmpty();
         drawMinimaMarkers();
         return minima;
@@ -56,8 +55,6 @@ public class ChartDataProcessor {
     public void drawMinimaMarkers() {
         Platform.runLater(() -> {
             chart.getMinimaSeries().getData().clear();
-
-            System.out.println("Drawing " + minima.size() + " minima markers");
 
             for (int idx : minima) {
                 if (idx >= 0 && idx < capturedY.length) {
@@ -81,14 +78,10 @@ public class ChartDataProcessor {
                             javafx.scene.control.Tooltip tooltip = new javafx.scene.control.Tooltip(String.format("Pixel: %d\nValue: %.2f\nRaw: %.2f",
                                     idx, capturedY[idx], 4095 - capturedY[idx]));
                             javafx.scene.control.Tooltip.install(newNode, tooltip);
-
-                            System.out.println("Created marker at pixel " + idx);
                         }
                     });
                 }
             }
-
-            System.out.println("Added " + chart.getMinimaSeries().getData().size() + " points to minimaSeries");
 
             if (chart.getMinimaSeries().getNode() != null) {
                 chart.getMinimaSeries().getNode().requestFocus();
