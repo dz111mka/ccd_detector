@@ -55,8 +55,8 @@ public class SpectrometerController {
     private final Button btnCapture = new Button("Захватить");
     private final Button btnMinima = new Button("Анализ");
     private final Button btnSmooth = new Button("Сгладить");
-    private final Button btnTransmissionMode = new Button("Transmission Mode");
-    private final Button btnClearBuffers = new Button("Clear Buffers");
+    private final Button btnTransmissionMode = new Button("Пропускание");
+    private final Button btnClearBuffers = new Button("Очистить буферы");
     private final TextField tfPeakThreshold = new TextField("1000");
     private final TextField tfPeakWindow = new TextField("50");
 
@@ -67,9 +67,9 @@ public class SpectrometerController {
     private ComboBox<SimulationTemplate> cbSimulationTemplate;
     private ComboBox<Double> cbCalibrationWavelength;
     private final TextField tfCalibrationPixel = new TextField();
-    private final Button btnAddCalibrationPoint = new Button("Add point");
-    private final Button btnApplyCalibration = new Button("Apply");
-    private final Button btnClearCalibration = new Button("Clear");
+    private final Button btnAddCalibrationPoint = new Button("Добавить");
+    private final Button btnApplyCalibration = new Button("Применить");
+    private final Button btnClearCalibration = new Button("Очистить");
 
     // ────────────────────────────────────────────────────────────────
     // Контроллеры для Arduino
@@ -95,12 +95,12 @@ public class SpectrometerController {
     private long lastRedraw = 0;
 
     // Кнопки масштаба
-    private final Button btnZoom = new Button("🔍");
-    private final Button btnZoomBack = new Button("↶");
-    private final Button btnZoomForward = new Button("↷");
+    private final Button btnZoom = new Button("Zoom");
+    private final Button btnZoomBack = new Button("Назад");
+    private final Button btnZoomForward = new Button("Вперёд");
 
     // Кнопка переключения темы
-    private final Button btnThemeToggle = new Button("🌙");
+    private final Button btnThemeToggle = new Button("Тема");
 
 
     // ────────────────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ public class SpectrometerController {
 
     public void toggleTheme() {
         themeManager.toggleTheme();
-        btnThemeToggle.setText(themeManager.isDarkTheme() ? "☀" : "☽");
+        btnThemeToggle.setText(themeManager.isDarkTheme() ? "Светлая" : "Тёмная");
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -185,32 +185,32 @@ public class SpectrometerController {
     private void initializeMeasurementUI() {
         chart.setAnimated(false);
         chart.setCreateSymbols(false);
-        chart.setMaxHeight(600);
+        chart.setMaxHeight(Double.MAX_VALUE);
         chart.setPrefHeight(600);
-        chart.setPrefWidth(2000);
-        chart.setMaxWidth(2000);
+        chart.setPrefWidth(1000);
+        chart.setMaxWidth(Double.MAX_VALUE);
     }
 
     private void initializeLogView() {
         logView.setItems(LogService.getLogs());
-        logView.setPrefHeight(200);
-        logView.setMaxHeight(200);
+        logView.setPrefHeight(170);
+        logView.setMaxHeight(220);
         logView.setStyle("""
                     -fx-font-family: Consolas;
                     -fx-font-size: 12;
                 """);
-        logView.setPrefWidth(2000);
-        logView.setMaxWidth(2000);
+        logView.setPrefWidth(1000);
+        logView.setMaxWidth(Double.MAX_VALUE);
     }
 
     private void configureVisualStyles() {
-        view.setPadding(new Insets(20));
+        view.setPadding(new Insets(0));
         applyTheme();
     }
 
     private void applyTheme() {
         themeManager.applyTheme();
-        btnThemeToggle.setText(themeManager.isDarkTheme() ? "☀" : "☽");
+        btnThemeToggle.setText(themeManager.isDarkTheme() ? "Светлая" : "Тёмная");
     }
 
     // ────────────────────────────────────────────────────────────────

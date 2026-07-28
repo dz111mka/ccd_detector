@@ -180,17 +180,17 @@ public class MeasurementManager {
             }
 
             data.displayMode = SpectrumData.DisplayMode.TRANSMISSION;
-            btnTransmissionMode.setText("Intensity Mode");
+            btnTransmissionMode.setText("Интенсивность");
             chart.setTransmissionMode(true);
-            LogService.log("✅ Переключено в режим TRANSMISSION (0-100%)");
+            LogService.log("Переключено в режим пропускания (0-100%)");
 
             // ВАЖНО: Принудительно обновляем график с новым режимом
             chart.forceRedraw(data);
         } else {
             data.displayMode = SpectrumData.DisplayMode.INTENSITY;
-            btnTransmissionMode.setText("Transmission Mode");
+            btnTransmissionMode.setText("Пропускание");
             chart.setTransmissionMode(false);
-            LogService.log("✅ Переключено в режим INTENSITY");
+            LogService.log("Переключено в режим интенсивности");
 
             // ВАЖНО: Принудительно обновляем график
             chart.forceRedraw(data);

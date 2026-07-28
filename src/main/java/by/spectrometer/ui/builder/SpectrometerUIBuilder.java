@@ -9,8 +9,23 @@ import by.spectrometer.service.ExportService;
 import by.spectrometer.ui.SpectrumChart;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.*;
+import javafx.scene.Node;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.CheckMenuItem;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuBar;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.util.StringConverter;
 
@@ -25,7 +40,6 @@ public class SpectrometerUIBuilder {
     public MenuBar createMenuBar() {
         MenuBar menuBar = new MenuBar();
 
-        // File menu
         Menu fileMenu = new Menu("Файл");
         Menu exportMenu = new Menu("Экспорт");
 
@@ -45,7 +59,6 @@ public class SpectrometerUIBuilder {
 
         fileMenu.getItems().addAll(exportMenu, new SeparatorMenuItem(), exitItem);
 
-        // View menu
         Menu viewMenu = new Menu("Вид");
 
         CheckMenuItem showGrid = new CheckMenuItem("Показать сетку");
@@ -61,15 +74,15 @@ public class SpectrometerUIBuilder {
 
         viewMenu.getItems().addAll(showGrid, showLegend, darkTheme);
 
-        // Help menu
         Menu helpMenu = new Menu("Справка");
         MenuItem aboutItem = new MenuItem("О программе");
         aboutItem.setOnAction(e -> {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
             alert.setTitle("О программе");
             alert.setHeaderText("DIY Спектрофотометр TCD1304");
-            alert.setContentText("Версия 0.0.1\n\nПрограмма для управления спектрофотометром на базе TCD1304.\n" +
-                    "Поддерживает измерение и анализ спектральных данных в диапазоне 190–2050 нм.");
+            alert.setContentText("Версия 0.0.1\n\n" +
+                    "Программа для управления спектрофотометром на базе TCD1304.\n" +
+                    "Поддерживает измерение и анализ спектральных данных.");
             alert.showAndWait();
         });
         helpMenu.getItems().add(aboutItem);
@@ -78,52 +91,51 @@ public class SpectrometerUIBuilder {
         return menuBar;
     }
 
-    public HBox buildConnectionPanel(ComboBox<ConnectionType> cbConnectionType, TextField tfAddress,
+    public VBox buildConnectionPanel(ComboBox<ConnectionType> cbConnectionType, TextField tfAddress,
                                      ComboBox<String> cbSerialPorts, Button btnConnect, Label lblStatus) {
-        HBox panel = new HBox(10);
-        panel.setAlignment(Pos.CENTER_LEFT);
-        panel.getChildren().addAll(
-                new Label("Тип:"), cbConnectionType,
-                new Label("Адрес:"), tfAddress,
-                cbSerialPorts,
-                btnConnect, lblStatus
-        );
-        return panel;
+        cbConnectionType.setMaxWidth(Double.MAX_VALUE);
+        tfAddress.setMaxWidth(Double.MAX_VALUE);
+        cbSerialPorts.setMaxWidth(Double.MAX_VALUE);
+        btnConnect.setMaxWidth(Double.MAX_VALUE);
+        lblStatus.setWrapText(true);
+
+        GridPane fields = createFieldGrid();
+        fields.addRow(0, new Label("Тип"), cbConnectionType);
+        fields.addRow(1, new Label("Адрес"), tfAddress);
+        fields.addRow(2, new Label("Порт"), cbSerialPorts);
+
+        return createSection("Подключение", fields, btnConnect, lblStatus);
     }
 
-    /**
-     * Builds the measurement-control HBox (buttons + peak threshold/width fields).
-     * The exposure/capture-mode row is built separately via {@link #buildExposureRow}.
-     */
-    public HBox buildMeasurementControls(Button btnDark, Button btnRef, Button btnCapture,
+    public VBox buildMeasurementControls(Button btnDark, Button btnRef, Button btnCapture,
                                          Button btnSmooth, Button btnAnalysis,
                                          Button btnZoom, Button btnZoomBack, Button btnZoomForward,
                                          Button btnThemeToggle, TextField tfPeakThreshold,
                                          TextField tfPeakWindow, Button btnTransmissionMode,
                                          Button btnClearBuffers) {
-        HBox controls = new HBox(8);
-        controls.setAlignment(Pos.CENTER_LEFT);
-        controls.getChildren().addAll(
-                btnDark, btnRef, btnCapture, btnSmooth, btnAnalysis,
-                btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle,
-                btnTransmissionMode, btnClearBuffers,
-                new Label("Порог:"), tfPeakThreshold,
-                new Label("Окно:"), tfPeakWindow
-        );
+        setFullWidth(btnCapture, btnTransmissionMode, btnDark, btnRef, btnSmooth, btnAnalysis, btnClearBuffers);
+
+        HBox bufferButtons = new HBox(8, btnDark, btnRef);
+        bufferButtons.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(btnDark, Priority.ALWAYS);
+        HBox.setHgrow(btnRef, Priority.ALWAYS);
+
+        GridPane analysisFields = createFieldGrid();
         tfPeakThreshold.setPrefWidth(70);
         tfPeakWindow.setPrefWidth(70);
+        analysisFields.addRow(0, new Label("Порог"), tfPeakThreshold);
+        analysisFields.addRow(1, new Label("Окно"), tfPeakWindow);
 
-        btnThemeToggle.setStyle("-fx-background-radius: 50%; -fx-min-width: 30; -fx-min-height: 30; " +
-                "-fx-max-width: 30; -fx-max-height: 30;");
+        HBox viewButtons = new HBox(8, btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle);
+        viewButtons.setAlignment(Pos.CENTER_LEFT);
 
-        return controls;
+        return new VBox(10,
+                createSection("Измерение", btnCapture, btnTransmissionMode, bufferButtons, btnClearBuffers),
+                createSection("Обработка", btnSmooth, btnAnalysis, analysisFields),
+                createSection("Вид", viewButtons)
+        );
     }
 
-    /**
-     * Builds the second row: Integration-time dropdown + Capture-mode dropdown.
-     *
-     * @return VBox containing the labeled HBox row (can be embedded directly in parent layout)
-     */
     public VBox buildExposureRow(ComboBox<String> cbIntegrationTime, ComboBox<String> cbCaptureMode,
                                  ComboBox<SimulationTemplate> cbSimulationTemplate,
                                  TextField tfCalibrationPixel,
@@ -131,69 +143,56 @@ public class SpectrometerUIBuilder {
                                  Button btnAddCalibrationPoint,
                                  Button btnApplyCalibration,
                                  Button btnClearCalibration) {
-        cbIntegrationTime.setPrefWidth(120);
-        cbCaptureMode.setPrefWidth(150);
-        cbSimulationTemplate.setPrefWidth(260);
+        cbIntegrationTime.setMaxWidth(Double.MAX_VALUE);
+        cbCaptureMode.setMaxWidth(Double.MAX_VALUE);
+        cbSimulationTemplate.setMaxWidth(Double.MAX_VALUE);
         tfCalibrationPixel.setPrefWidth(90);
-        cbCalibrationWavelength.setPrefWidth(130);
+        cbCalibrationWavelength.setMaxWidth(Double.MAX_VALUE);
+        setFullWidth(btnAddCalibrationPoint, btnApplyCalibration, btnClearCalibration);
 
-        HBox exposureRow = new HBox(12);
-        exposureRow.setAlignment(Pos.CENTER_LEFT);
-        exposureRow.setPadding(new Insets(4, 0, 0, 0));
-        exposureRow.getChildren().addAll(
-                new Label("Интеграция:"), cbIntegrationTime,
-                new Label("Режим сбора:"), cbCaptureMode,
-                new Label("Симуляция:"), cbSimulationTemplate
+        GridPane exposureFields = createFieldGrid();
+        exposureFields.addRow(0, new Label("Интеграция"), cbIntegrationTime);
+        exposureFields.addRow(1, new Label("Сбор"), cbCaptureMode);
+        exposureFields.addRow(2, new Label("Симуляция"), cbSimulationTemplate);
+
+        GridPane calibrationFields = createFieldGrid();
+        calibrationFields.addRow(0, new Label("Pixel"), tfCalibrationPixel);
+        calibrationFields.addRow(1, new Label("nm"), cbCalibrationWavelength);
+
+        HBox calibrationButtons = new HBox(8, btnAddCalibrationPoint, btnApplyCalibration, btnClearCalibration);
+
+        return new VBox(10,
+                createSection("Экспозиция", exposureFields),
+                createSection("Градуировка", calibrationFields, calibrationButtons)
         );
-
-        HBox calibrationRow = new HBox(8);
-        calibrationRow.setAlignment(Pos.CENTER_LEFT);
-        calibrationRow.getChildren().addAll(
-                new Label("Градуировка: pixel"), tfCalibrationPixel,
-                new Label("→ nm"), cbCalibrationWavelength,
-                btnAddCalibrationPoint,
-                btnApplyCalibration,
-                btnClearCalibration
-        );
-
-        VBox rows = new VBox(6, exposureRow, calibrationRow);
-        return rows;
     }
 
-    /**
-     * Factory: integration-time ComboBox matching C# comboBox2.
-     * "10 µs" → INT_1, "20 µs" → INT_2, … "7.5 ms" → INT_10.
-     */
     public ComboBox<String> createIntegrationTimeComboBox() {
         ComboBox<String> cb = new ComboBox<>();
         cb.getItems().addAll(
-                "10 µs",
-                "20 µs",
-                "50 µs",
-                "60 µs",
-                "75 µs",
-                "100 µs",
-                "500 µs",
+                "10 us",
+                "20 us",
+                "50 us",
+                "60 us",
+                "75 us",
+                "100 us",
+                "500 us",
                 "1.25 ms",
                 "2.5 ms",
                 "7.5 ms"
         );
-        cb.setValue("100 µs");
+        cb.setValue("100 us");
         return cb;
     }
 
-    /**
-     * Factory: capture-mode ComboBox matching C# comboBox3.
-     * Index 0 → 12-bit ADC, Index 1 → 8-bit ADC, Index 2 → packetised frame (0xFE header).
-     */
     public ComboBox<String> createCaptureModeComboBox() {
         ComboBox<String> cb = new ComboBox<>();
         cb.getItems().addAll(
-                "Все данные — 12 бит",
-                "Все данные — 8 бит",
-                "Пакетный режим (0xFE заголовок)"
+                "Все данные - 12 бит",
+                "Все данные - 8 бит",
+                "Пакетный режим (0xFE)"
         );
-        cb.setValue("Все данные — 12 бит");
+        cb.setValue("Все данные - 12 бит");
         return cb;
     }
 
@@ -225,29 +224,68 @@ public class SpectrometerUIBuilder {
         return cb;
     }
 
-    public VBox buildMainLayout(MenuBar menuBar, HBox connectionPanel, HBox measurementControls,
+    public VBox buildMainLayout(MenuBar menuBar, VBox connectionPanel, VBox measurementControls,
                                 VBox exposureControls,
                                 SpectrumChart chart, ListView<String> logView,
                                 ArduinoConnectionController arduinoController,
                                 StepperMotorController stepperController) {
-        VBox mainContent = new VBox(15);
-        mainContent.setPadding(new Insets(20));
-        mainContent.getChildren().addAll(
+        VBox sidebar = new VBox(12,
                 connectionPanel,
                 measurementControls,
                 exposureControls,
-                chart,
-                new Label("Логи:"),
-                logView,
-                arduinoController.getView(),
-                stepperController.getView()
+                createSection("Arduino", arduinoController.getView()),
+                createSection("Двигатель", stepperController.getView())
         );
+        sidebar.setPrefWidth(340);
+        sidebar.setMinWidth(300);
+        sidebar.setMaxWidth(380);
 
-        VBox view = new VBox();
-        view.getChildren().addAll(
-                menuBar,
-                mainContent
-        );
+        ScrollPane sidebarScroll = new ScrollPane(sidebar);
+        sidebarScroll.setFitToWidth(true);
+        sidebarScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        sidebarScroll.setPadding(new Insets(0));
+
+        Label logTitle = new Label("Журнал");
+        VBox chartArea = new VBox(10, chart, logTitle, logView);
+        chartArea.setPadding(new Insets(0));
+        VBox.setVgrow(chart, Priority.ALWAYS);
+
+        BorderPane workspace = new BorderPane();
+        workspace.setPadding(new Insets(16));
+        workspace.setLeft(sidebarScroll);
+        workspace.setCenter(chartArea);
+        BorderPane.setMargin(sidebarScroll, new Insets(0, 16, 0, 0));
+
+        VBox view = new VBox(menuBar, workspace);
+        VBox.setVgrow(workspace, Priority.ALWAYS);
         return view;
+    }
+
+    private VBox createSection(String title, Node... children) {
+        Label titleLabel = new Label(title);
+        titleLabel.setStyle("-fx-font-weight: bold;");
+
+        VBox section = new VBox(8);
+        section.setPadding(new Insets(10));
+        section.setStyle("-fx-border-color: rgba(128, 128, 128, 0.35); " +
+                "-fx-border-width: 1px; " +
+                "-fx-border-radius: 6px; " +
+                "-fx-background-radius: 6px;");
+        section.getChildren().add(titleLabel);
+        section.getChildren().addAll(children);
+        return section;
+    }
+
+    private GridPane createFieldGrid() {
+        GridPane grid = new GridPane();
+        grid.setHgap(8);
+        grid.setVgap(8);
+        return grid;
+    }
+
+    private void setFullWidth(Button... buttons) {
+        for (Button button : buttons) {
+            button.setMaxWidth(Double.MAX_VALUE);
+        }
     }
 }
