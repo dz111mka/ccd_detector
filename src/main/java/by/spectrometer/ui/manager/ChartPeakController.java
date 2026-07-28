@@ -7,7 +7,8 @@ import by.spectrometer.ui.SpectrumChart;
 import javafx.application.Platform;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Tooltip;
-import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -66,28 +67,29 @@ public class ChartPeakController {
     private void drawPeakMarkers() {
         Platform.runLater(() -> {
             chart.getPeaksSeries().getData().clear();
+            chart.clearOverlayMarkers(SpectrumChart.MarkerType.PEAK);
+            chart.clearIndicatorLines(SpectrumChart.MarkerType.PEAK);
 
             for (Peak peak : peaks) {
-                XYChart.Data<Number, Number> point = new XYChart.Data<>(chart.getXValueForPixel(peak.pixel()), chart.getCapturedY()[peak.pixel()]);
-                point.setNode(createPeakMarker(peak));
-                chart.getPeaksSeries().getData().add(point);
+                chart.addIndicatorLine(SpectrumChart.MarkerType.PEAK, peak.pixel(), chart.getCapturedY()[peak.pixel()], "#30d158");
+                chart.addOverlayMarker(
+                        SpectrumChart.MarkerType.PEAK,
+                        peak.pixel(),
+                        chart.getCapturedY()[peak.pixel()],
+                        createPeakMarker(peak)
+                );
             }
         });
     }
 
-    private StackPane createPeakMarker(Peak peak) {
-        StackPane marker = new StackPane();
-        marker.setMinSize(12, 12);
-        marker.setPrefSize(12, 12);
-        marker.setMaxSize(12, 12);
-        marker.setStyle("""
-                -fx-background-color: #30d158;
-                -fx-background-radius: 6px;
-                -fx-border-color: white;
-                -fx-border-width: 2px;
-                -fx-border-radius: 6px;
-                -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.85), 6, 0, 0, 1);
-                """);
+    private Circle createPeakMarker(Peak peak) {
+        Circle marker = new Circle(6);
+        marker.setManaged(false);
+        marker.setMouseTransparent(false);
+        marker.setFill(Color.web("#30d158"));
+        marker.setStroke(Color.WHITE);
+        marker.setStrokeWidth(2);
+        marker.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.85), 6, 0, 0, 1);");
 
         Tooltip.install(marker, new Tooltip(String.format(
                 "Peak\n%s\nHeight: %.2f\nFWHM: %.2f\nArea: %.2f\nBest fit: %s\nGaussian R²: %.3f\nLorentzian R²: %.3f",
@@ -105,6 +107,8 @@ public class ChartPeakController {
         Platform.runLater(() -> {
             peaks.clear();
             chart.getPeaksSeries().getData().clear();
+            chart.clearOverlayMarkers(SpectrumChart.MarkerType.PEAK);
+            chart.clearIndicatorLines(SpectrumChart.MarkerType.PEAK);
             baseline = null;
             chart.getBaselineSeries().getData().clear();
         });

@@ -6,7 +6,8 @@ import by.spectrometer.util.Constants;
 import javafx.scene.chart.XYChart;
 import javafx.application.Platform;
 import javafx.scene.control.Tooltip;
-import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -92,12 +93,18 @@ public class ChartDataProcessor {
     public void drawMinimaMarkers() {
         Platform.runLater(() -> {
             chart.getMinimaSeries().getData().clear();
+            chart.clearOverlayMarkers(SpectrumChart.MarkerType.MINIMUM);
+            chart.clearIndicatorLines(SpectrumChart.MarkerType.MINIMUM);
 
             for (int idx : minima) {
                 if (idx >= 0 && idx < capturedY.length) {
-                    XYChart.Data<Number, Number> point = new XYChart.Data<>(chart.getXValueForPixel(idx), capturedY[idx]);
-                    point.setNode(createMinimaMarker(idx, capturedY[idx]));
-                    chart.getMinimaSeries().getData().add(point);
+                    chart.addIndicatorLine(SpectrumChart.MarkerType.MINIMUM, idx, capturedY[idx], "#ff3b30");
+                    chart.addOverlayMarker(
+                            SpectrumChart.MarkerType.MINIMUM,
+                            idx,
+                            capturedY[idx],
+                            createMinimaMarker(idx, capturedY[idx])
+                    );
                 }
             }
 
@@ -107,19 +114,14 @@ public class ChartDataProcessor {
         });
     }
 
-    private StackPane createMinimaMarker(int pixel, double value) {
-        StackPane marker = new StackPane();
-        marker.setMinSize(12, 12);
-        marker.setPrefSize(12, 12);
-        marker.setMaxSize(12, 12);
-        marker.setStyle("""
-                -fx-background-color: #ff3b30;
-                -fx-background-radius: 6px;
-                -fx-border-color: white;
-                -fx-border-width: 2px;
-                -fx-border-radius: 6px;
-                -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.85), 6, 0, 0, 1);
-                """);
+    private Circle createMinimaMarker(int pixel, double value) {
+        Circle marker = new Circle(6);
+        marker.setManaged(false);
+        marker.setMouseTransparent(false);
+        marker.setFill(Color.web("#ff3b30"));
+        marker.setStroke(Color.WHITE);
+        marker.setStrokeWidth(2);
+        marker.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.85), 6, 0, 0, 1);");
 
         Tooltip.install(marker, new Tooltip(String.format(
                 "Minimum\n%s\nValue: %.2f\nRaw: %.2f",
@@ -136,6 +138,8 @@ public class ChartDataProcessor {
         Platform.runLater(() -> {
             minima.clear();
             chart.getMinimaSeries().getData().clear();
+            chart.clearOverlayMarkers(SpectrumChart.MarkerType.MINIMUM);
+            chart.clearIndicatorLines(SpectrumChart.MarkerType.MINIMUM);
             hasMinima = false;
         });
     }

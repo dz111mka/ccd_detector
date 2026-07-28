@@ -96,7 +96,7 @@ public class SpectrometerUIBuilder {
      * The exposure/capture-mode row is built separately via {@link #buildExposureRow}.
      */
     public HBox buildMeasurementControls(Button btnDark, Button btnRef, Button btnCapture,
-                                         Button btnSmooth, Button btnMinima, Button btnPeaks,
+                                         Button btnSmooth, Button btnAnalysis,
                                          Button btnZoom, Button btnZoomBack, Button btnZoomForward,
                                          Button btnThemeToggle, TextField tfPeakThreshold,
                                          TextField tfPeakWindow, Button btnTransmissionMode,
@@ -104,7 +104,7 @@ public class SpectrometerUIBuilder {
         HBox controls = new HBox(8);
         controls.setAlignment(Pos.CENTER_LEFT);
         controls.getChildren().addAll(
-                btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks,
+                btnDark, btnRef, btnCapture, btnSmooth, btnAnalysis,
                 btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle,
                 btnTransmissionMode, btnClearBuffers,
                 new Label("Порог:"), tfPeakThreshold,

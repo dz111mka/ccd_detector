@@ -19,6 +19,8 @@ import javafx.scene.chart.XYChart;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.MouseEvent;
 
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -38,6 +40,8 @@ public class SpectrumChart extends LineChart<Number, Number> {
     private final Series<Number, Number> peaksSeries = new Series<>();
     private final Series<Number, Number> baselineSeries = new Series<>();
     private final double[] xValues = new double[PIXEL_COUNT];
+    private final List<PlotMarker> plotMarkers = new ArrayList<>();
+    private final List<IndicatorSeries> indicatorSeries = new ArrayList<>();
 
     private boolean showAbsorbance = false;
     private boolean frozen = false;
@@ -114,6 +118,23 @@ public class SpectrumChart extends LineChart<Number, Number> {
         if (calibrationPixelSelectionHandler != null) {
             calibrationPixelSelectionHandler.accept(pixel);
         }
+    }
+
+    public enum MarkerType {
+        MINIMUM,
+        PEAK
+    }
+
+    private record PlotMarker(MarkerType type, int pixel, double yValue, Node node) {
+    }
+
+    private record IndicatorSeries(MarkerType type, Series<Number, Number> series, int pixel, String color) {
+    }
+
+    @Override
+    protected void layoutPlotChildren() {
+        super.layoutPlotChildren();
+        layoutOverlayMarkers();
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -408,6 +429,50 @@ public class SpectrumChart extends LineChart<Number, Number> {
         });
     }
 
+    public void clearOverlayMarkers(MarkerType type) {
+        plotMarkers.removeIf(marker -> {
+            if (marker.type() == type) {
+                getPlotChildren().remove(marker.node());
+                return true;
+            }
+            return false;
+        });
+    }
+
+    public void addOverlayMarker(MarkerType type, int pixel, double yValue, Node node) {
+        plotMarkers.add(new PlotMarker(type, pixel, yValue, node));
+        getPlotChildren().add(node);
+        layoutOverlayMarker(plotMarkers.getLast());
+        node.toFront();
+    }
+
+    public void clearIndicatorLines(MarkerType type) {
+        Iterator<IndicatorSeries> iterator = indicatorSeries.iterator();
+        while (iterator.hasNext()) {
+            IndicatorSeries indicator = iterator.next();
+            if (indicator.type() == type) {
+                getData().remove(indicator.series());
+                iterator.remove();
+            }
+        }
+    }
+
+    public void addIndicatorLine(MarkerType type, int pixel, double yValue, String color) {
+        double x = getXValueForPixel(pixel);
+        double baseY = ((NumberAxis) getYAxis()).getLowerBound();
+        double topY = yValue;
+
+        Series<Number, Number> series = new Series<>();
+        series.setName(type == MarkerType.MINIMUM ? "Minimum marker" : "Peak marker");
+        series.getData().add(new XYChart.Data<>(x, baseY));
+        series.getData().add(new XYChart.Data<>(x, topY));
+
+        getData().add(series);
+        indicatorSeries.add(new IndicatorSeries(type, series, pixel, color));
+
+        Platform.runLater(() -> styleIndicatorSeries(series, color));
+    }
+
     public double getXValueForPixel(int pixel) {
         if (pixel < 0 || pixel >= xValues.length) {
             return pixel;
@@ -451,6 +516,8 @@ public class SpectrumChart extends LineChart<Number, Number> {
             xAxis.setLowerBound(xValues[0]);
             xAxis.setUpperBound(xValues[PIXEL_COUNT - 1]);
         }
+
+        refreshIndicatorLinePositions();
     }
 
     private String getXAxisDisplayName() {
@@ -459,6 +526,46 @@ public class SpectrumChart extends LineChart<Number, Number> {
 
     private String getXAxisUnitSuffix() {
         return wavelengthCalibrated ? " nm" : "";
+    }
+
+    private void layoutOverlayMarkers() {
+        plotMarkers.forEach(this::layoutOverlayMarker);
+    }
+
+    private void layoutOverlayMarker(PlotMarker marker) {
+        double x = getXAxis().getDisplayPosition(getXValueForPixel(marker.pixel()));
+        double y = getYAxis().getDisplayPosition(marker.yValue());
+        double size = 12;
+        boolean visible = x >= -size && y >= -size
+                && x <= getWidth() + size && y <= getHeight() + size;
+
+        marker.node().setVisible(visible);
+        marker.node().relocate(x - size / 2, y - size / 2);
+        marker.node().toFront();
+    }
+
+    private void refreshIndicatorLinePositions() {
+        for (IndicatorSeries indicator : indicatorSeries) {
+            double x = getXValueForPixel(indicator.pixel());
+            if (indicator.series().getData().size() >= 2) {
+                indicator.series().getData().get(0).setXValue(x);
+                indicator.series().getData().get(1).setXValue(x);
+            }
+        }
+    }
+
+    private void styleIndicatorSeries(Series<Number, Number> series, String color) {
+        Node line = series.getNode() == null ? null : series.getNode().lookup(".chart-series-line");
+        if (line != null) {
+            line.setStyle("-fx-stroke: " + color + "; -fx-stroke-width: 2.5px;");
+            line.toFront();
+        }
+
+        Set<Node> symbols = series.getNode() == null ? Set.of() : series.getNode().lookupAll(".chart-line-symbol");
+        for (Node symbol : symbols) {
+            symbol.setVisible(false);
+            symbol.setManaged(false);
+        }
     }
 
     // ────────────────────────────────────────────────────────────────

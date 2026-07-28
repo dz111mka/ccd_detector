@@ -53,9 +53,8 @@ public class SpectrometerController {
     private final Button btnDark = new Button("Тёмный ток");
     private final Button btnRef = new Button("Белая опора");
     private final Button btnCapture = new Button("Захватить");
-    private final Button btnMinima = new Button("Минимумы");
+    private final Button btnMinima = new Button("Анализ");
     private final Button btnSmooth = new Button("Сгладить");
-    private final Button btnPeaks = new Button("Пики");
     private final Button btnTransmissionMode = new Button("Transmission Mode");
     private final Button btnClearBuffers = new Button("Clear Buffers");
     private final TextField tfPeakThreshold = new TextField("1000");
@@ -124,7 +123,7 @@ public class SpectrometerController {
 
         view = uiBuilder.buildMainLayout(menuBar,
                 uiBuilder.buildConnectionPanel(cbConnectionType, tfAddress, cbSerialPorts, btnConnect, lblStatus),
-                uiBuilder.buildMeasurementControls(btnDark, btnRef, btnCapture, btnSmooth, btnMinima, btnPeaks,
+                uiBuilder.buildMeasurementControls(btnDark, btnRef, btnCapture, btnSmooth, btnMinima,
                         btnZoom, btnZoomBack, btnZoomForward, btnThemeToggle, tfPeakThreshold, tfPeakWindow,
                         btnTransmissionMode, btnClearBuffers),
                 uiBuilder.buildExposureRow(cbIntegrationTime, cbCaptureMode, cbSimulationTemplate,
@@ -286,8 +285,7 @@ public class SpectrometerController {
         btnRef.setOnAction(e -> measurementManager.recordReferenceSignal());
         btnCapture.setOnAction(e -> measurementManager.toggleCaptureMode(btnCapture));
         btnSmooth.setOnAction(e -> measurementManager.applySmoothing());
-        btnMinima.setOnAction(e -> measurementManager.findMinima());
-        btnPeaks.setOnAction(e -> measurementManager.detectPeaks(tfPeakThreshold, tfPeakWindow));
+        btnMinima.setOnAction(e -> measurementManager.analyzeExtrema(tfPeakThreshold, tfPeakWindow));
         btnTransmissionMode.setOnAction(e -> measurementManager.toggleTransmissionMode(btnTransmissionMode));
         btnClearBuffers.setOnAction(e -> measurementManager.clearBuffers());
         btnZoom.setOnAction(e ->

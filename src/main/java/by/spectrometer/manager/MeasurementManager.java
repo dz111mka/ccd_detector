@@ -41,6 +41,14 @@ public class MeasurementManager {
         chart.smooth(Constants.SMOOTHING_WINDOW_SIZE);
     }
 
+    public void analyzeExtrema(TextField tfPeakThreshold, TextField tfPeakWindow) {
+        if (!validateMinimaSearch()) return;
+
+        LogService.log("Spectrum analysis: searching minimums and peaks...");
+        findMinima();
+        detectPeaks(tfPeakThreshold, tfPeakWindow);
+    }
+
     public void detectPeaks(TextField tfPeakThreshold, TextField tfPeakWindow) {
         if (!validatePeakDetection()) return;
 
